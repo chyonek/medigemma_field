@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  MediGemma Field - Body Silhouette
+  License: CC0 1.0 Universal (Public Domain Dedication)
+  Anatomically inspired front-view body silhouette for triage UI.
+  Drawn from scratch for this project; no third-party copyrighted material used.
+-->
+<svg viewBox="0 0 100 220" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2D4A6B" />
+      <stop offset="100%" stop-color="#1E3550" />
+    </linearGradient>
+  </defs>
+
+  <g stroke="rgba(255,255,255,0.55)" stroke-width="1.0" stroke-linejoin="round" stroke-linecap="round">
+
+    <!-- ━━ HEAD ━━ Slightly elongated oval, anatomical proportions -->
+    <ellipse cx="50" cy="18" rx="11" ry="13.5" fill="url(#bodyGrad)" />
+
+    <!-- ━━ NECK ━━ Trapezoidal neck connecting head to shoulders -->
+    <path d="M 44.5,30
+             Q 44,33 43.5,36
+             L 56.5,36
+             Q 56,33 55.5,30 Z"
+          fill="url(#bodyGrad)" />
+
+    <!-- ━━ CHEST ━━ Pectoral region, sloping shoulders -->
+    <path d="M 43.5,36
+             C 36,36 28,39 24,46
+             C 22,52 22,58 22,62
+             L 22,72
+             L 78,72
+             L 78,62
+             C 78,58 78,52 76,46
+             C 72,39 64,36 56.5,36 Z"
+          fill="url(#bodyGrad)" />
+
+    <!-- ━━ ABDOMEN ━━ Waist with subtle taper, hip widening -->
+    <path d="M 22,72
+             C 21,80 21,88 22,96
+             C 22,102 23,108 24,112
+             L 76,112
+             C 77,108 78,102 78,96
+             C 79,88 79,80 78,72 Z"
+          fill="url(#bodyGrad)" />
+
+    <!-- ━━ LEFT ARM ━━ (mirror UX: viewer's left = patient's left) -->
+    <path d="M 22,46
+             C 18,49 14,55 12,62
+             C 10,70 9,80 9,90
+             C 9,98 10,106 11,112
+             C 12,116 13,118 14,120
+             C 15,121 17,121 18,120
+             C 19,119 20,117 20,114
+             C 21,108 22,100 23,92
+             C 24,82 25,72 24,62
+             C 24,56 23,50 22,46 Z"
+          fill="url(#bodyGrad)" />
+
+    <!-- ━━ RIGHT ARM ━━ -->
+    <path d="M 78,46
+             C 82,49 86,55 88,62
+             C 90,70 91,80 91,90
+             C 91,98 90,106 89,112
+             C 88,116 87,118 86,120
+             C 85,121 83,121 82,120
+             C 81,119 80,117 80,114
+             C 79,108 78,100 77,92
+             C 76,82 75,72 76,62
+             C 76,56 77,50 78,46 Z"
+          fill="url(#bodyGrad)" />
+
+    <!-- ━━ LEFT LEG ━━ -->
+    <path d="M 24,112
+             C 23,128 23,144 25,160
+             C 26,176 28,192 30,205
+             C 31,208 32,210 33,212
+             L 47,212
+             C 47.5,208 48,202 48,196
+             C 48,180 47,164 46,148
+             C 45,136 45,124 46,112 Z"
+          fill="url(#bodyGrad)" />
+
+    <!-- ━━ RIGHT LEG ━━ -->
+    <path d="M 76,112
+             C 77,128 77,144 75,160
+             C 74,176 72,192 70,205
+             C 69,208 68,210 67,212
+             L 53,212
+             C 52.5,208 52,202 52,196
+             C 52,180 53,164 54,148
+             C 55,136 55,124 54,112 Z"
+          fill="url(#bodyGrad)" />
+
+    <!-- ━━ FEET ━━ Subtle foot shapes -->
+    <ellipse cx="40" cy="214" rx="9" ry="3" fill="url(#bodyGrad)" />
+    <ellipse cx="60" cy="214" rx="9" ry="3" fill="url(#bodyGrad)" />
+
+  </g>
+
+  <!-- ━━ FACE FEATURES ━━ Subtle, friendly -->
+  <g fill="rgba(255,255,255,0.55)" stroke="rgba(255,255,255,0.55)" stroke-linecap="round">
+    <!-- Eyebrows -->
+    <line x1="42.5" y1="14" x2="46.5" y2="13.5" stroke-width="1" fill="none" />
+    <line x1="53.5" y1="13.5" x2="57.5" y2="14" stroke-width="1" fill="none" />
+    <!-- Eyes -->
+    <circle cx="45.5" cy="17" r="0.95" />
+    <circle cx="54.5" cy="17" r="0.95" />
+    <!-- Nose hint (subtle) -->
+    <path d="M 50,19 L 50,22" stroke-width="0.6" fill="none" stroke="rgba(255,255,255,0.3)" />
+    <!-- Mouth (gentle smile) -->
+    <path d="M 46,24 Q 50,25.5 54,24" stroke-width="0.8" fill="none" />
+  </g>
+
+  <!-- ━━ SUBTLE CENTER LINE ━━ Gives anatomical hint without being clinical -->
+  <line x1="50" y1="38" x2="50" y2="110" stroke="rgba(255,255,255,0.10)" stroke-width="0.5" />
+
+</svg>

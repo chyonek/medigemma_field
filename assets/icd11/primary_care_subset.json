@@ -1,0 +1,333 @@
+{
+  "_meta": {
+    "version": "MediGemma Field — ICD-11 Primary Care curated subset (2026-05)",
+    "description": "Hand-curated subset of WHO ICD-11 entries most relevant to primary care triage in resource-limited settings. Selected to align with WHO ETAT emergency triage and WHO IMCI childhood illness protocols, plus tropical infectious diseases relevant to the target user population (Sub-Saharan Africa, refugee camps, conflict zones).",
+    "source": "International Classification of Diseases, Eleventh Revision (ICD-11), World Health Organization (WHO) 2019/2021. https://icd.who.int/browse11",
+    "license": "CC BY-ND 3.0 IGO. Data is reproduced without modification. Codes and titles are quoted verbatim from ICD-11. Keyword tags and primary_care_note fields are MediGemma Field annotations and are not part of ICD-11.",
+    "license_url": "https://creativecommons.org/licenses/by-nd/3.0/igo/",
+    "disclaimer": "This subset is not an authoritative diagnostic dataset. It is a triage-aid lookup to ground LLM outputs in standard medical taxonomy. Always verify against official ICD-11 references for clinical use.",
+    "entry_count": 40
+  },
+  "entries": [
+    {
+      "code": "1A33",
+      "title": "Cholera",
+      "category": "Infectious",
+      "keywords": ["cholera", "watery diarrhea", "rice water stool", "severe dehydration", "rapid dehydration"],
+      "urgency_hint": 3,
+      "primary_care_note": "Severe acute watery diarrhea with rapid dehydration. Level 3 if shock or extreme dehydration. Oral rehydration urgent."
+    },
+    {
+      "code": "1A40",
+      "title": "Typhoid fever",
+      "category": "Infectious",
+      "keywords": ["typhoid", "sustained fever", "abdominal pain", "rose spots", "constipation alternating diarrhea"],
+      "urgency_hint": 2,
+      "primary_care_note": "Sustained high fever with GI symptoms in endemic areas. Antibiotic treatment required."
+    },
+    {
+      "code": "1F40",
+      "title": "Malaria",
+      "category": "Infectious",
+      "keywords": ["malaria", "fever with chills", "rigors", "headache", "sweating", "cyclical fever", "endemic area travel"],
+      "urgency_hint": 3,
+      "primary_care_note": "Fever with chills/rigors in endemic area. P. falciparum can be Level 3 (cerebral malaria). Test and treat urgently."
+    },
+    {
+      "code": "1D40",
+      "title": "Dengue fever",
+      "category": "Infectious",
+      "keywords": ["dengue", "high fever", "severe headache", "retro-orbital pain", "rash", "myalgia", "bone pain", "breakbone fever"],
+      "urgency_hint": 2,
+      "primary_care_note": "High fever with severe muscle/joint pain in endemic area. Watch for warning signs (bleeding, abdominal pain) → Level 3."
+    },
+    {
+      "code": "CA40",
+      "title": "Pneumonia",
+      "category": "Respiratory",
+      "keywords": ["pneumonia", "productive cough", "fever", "shortness of breath", "chest pain on breathing", "rapid breathing", "tachypnea"],
+      "urgency_hint": 2,
+      "primary_care_note": "Fever + productive cough + breathing difficulty. WHO IMCI: rapid breathing in children = Level 3 (severe pneumonia)."
+    },
+    {
+      "code": "CA22",
+      "title": "Acute upper respiratory infection",
+      "category": "Respiratory",
+      "keywords": ["common cold", "runny nose", "sore throat", "mild cough", "low fever", "URI", "URTI"],
+      "urgency_hint": 1,
+      "primary_care_note": "Self-limiting. Home care with rest and fluids. Watch for worsening → escalate."
+    },
+    {
+      "code": "CA23",
+      "title": "Acute bronchitis",
+      "category": "Respiratory",
+      "keywords": ["bronchitis", "persistent cough", "chest tightness", "wheezing", "post-viral cough"],
+      "urgency_hint": 2,
+      "primary_care_note": "Cough lasting 1-3 weeks after URI. Antibiotics usually not needed unless bacterial superinfection."
+    },
+    {
+      "code": "CA23.30",
+      "title": "Acute bronchiolitis (RSV)",
+      "category": "Respiratory",
+      "keywords": ["bronchiolitis", "infant cough", "infant breathing", "wheezing in baby", "RSV", "respiratory syncytial virus"],
+      "urgency_hint": 3,
+      "primary_care_note": "Children under 2: rapid breathing or chest indrawing = Level 3 per WHO IMCI."
+    },
+    {
+      "code": "CA22.1",
+      "title": "Acute pharyngitis",
+      "category": "Respiratory",
+      "keywords": ["sore throat", "pharyngitis", "tonsillitis", "strep throat", "swallowing pain"],
+      "urgency_hint": 1,
+      "primary_care_note": "Most viral. Strep (bacterial) needs antibiotics if confirmed."
+    },
+    {
+      "code": "CA20",
+      "title": "Asthma exacerbation",
+      "category": "Respiratory",
+      "keywords": ["asthma attack", "wheezing", "severe shortness of breath", "cannot speak in full sentences", "tight chest"],
+      "urgency_hint": 3,
+      "primary_care_note": "Inability to speak in full sentences = Level 3. Bronchodilator inhaler urgent."
+    },
+    {
+      "code": "BA40",
+      "title": "Acute coronary syndrome",
+      "category": "Cardiovascular",
+      "keywords": ["chest pain", "chest pressure", "crushing chest pain", "left arm pain", "jaw pain", "angina", "heart attack", "myocardial infarction"],
+      "urgency_hint": 3,
+      "primary_care_note": "Always Level 3. Time-critical. Activate emergency services immediately."
+    },
+    {
+      "code": "8B20",
+      "title": "Stroke (cerebrovascular accident)",
+      "category": "Neurological",
+      "keywords": ["stroke", "facial droop", "arm weakness", "slurred speech", "sudden numbness", "FAST", "hemiparesis", "aphasia"],
+      "urgency_hint": 3,
+      "primary_care_note": "Always Level 3. FAST signs (Face/Arm/Speech/Time) = transport immediately. Time window critical."
+    },
+    {
+      "code": "MG24",
+      "title": "Convulsions / seizures",
+      "category": "Neurological",
+      "keywords": ["seizure", "convulsion", "fit", "epileptic episode", "shaking uncontrollably", "loss of consciousness with shaking"],
+      "urgency_hint": 3,
+      "primary_care_note": "Always Level 3 if first seizure or status epilepticus (>5 min). WHO ETAT priority sign."
+    },
+    {
+      "code": "8B60",
+      "title": "Meningitis",
+      "category": "Neurological",
+      "keywords": ["meningitis", "stiff neck", "severe headache with fever", "photophobia", "Kernig sign", "Brudzinski sign", "neck rigidity"],
+      "urgency_hint": 3,
+      "primary_care_note": "Fever + stiff neck = Level 3. Time-critical antibiotic treatment."
+    },
+    {
+      "code": "DA92.0",
+      "title": "Acute appendicitis",
+      "category": "Gastrointestinal",
+      "keywords": ["appendicitis", "right lower abdominal pain", "RLQ pain", "McBurney point", "rebound tenderness", "periumbilical pain migrating right"],
+      "urgency_hint": 3,
+      "primary_care_note": "Classic migration of pain from periumbilical to RLQ. Surgical emergency."
+    },
+    {
+      "code": "DD93",
+      "title": "Acute gastroenteritis",
+      "category": "Gastrointestinal",
+      "keywords": ["gastroenteritis", "vomiting and diarrhea", "stomach flu", "food poisoning", "viral gastroenteritis"],
+      "urgency_hint": 2,
+      "primary_care_note": "Most self-limiting. Level 3 if signs of severe dehydration (sunken eyes, no urine, lethargy)."
+    },
+    {
+      "code": "DA60.Z",
+      "title": "Peptic ulcer disease",
+      "category": "Gastrointestinal",
+      "keywords": ["stomach ulcer", "epigastric pain", "burning stomach pain", "pain after eating", "H. pylori", "duodenal ulcer"],
+      "urgency_hint": 2,
+      "primary_care_note": "Burning epigastric pain. Black stools (melena) or hematemesis = Level 3 (GI bleed)."
+    },
+    {
+      "code": "JA00",
+      "title": "Ectopic pregnancy",
+      "category": "OB/GYN",
+      "keywords": ["ectopic pregnancy", "tubal pregnancy", "lower abdominal pain in pregnancy", "shoulder tip pain", "vaginal bleeding early pregnancy", "pregnant with pain"],
+      "urgency_hint": 3,
+      "primary_care_note": "Always Level 3. Reproductive-age woman with abdominal pain + missed period must rule this out. Surgical emergency."
+    },
+    {
+      "code": "JA00.1",
+      "title": "Threatened or spontaneous miscarriage",
+      "category": "OB/GYN",
+      "keywords": ["miscarriage", "spontaneous abortion", "vaginal bleeding pregnancy", "cramping in pregnancy", "passing tissue"],
+      "urgency_hint": 2,
+      "primary_care_note": "Bleeding in pregnancy. Heavy bleeding or shock signs = Level 3."
+    },
+    {
+      "code": "JB63",
+      "title": "Pre-eclampsia / eclampsia",
+      "category": "OB/GYN",
+      "keywords": ["pre-eclampsia", "eclampsia", "severe headache pregnancy", "swelling face hands", "high blood pressure pregnancy", "vision changes pregnancy", "seizure pregnancy"],
+      "urgency_hint": 3,
+      "primary_care_note": "Pregnancy >20 weeks + headache/swelling/vision changes = Level 3."
+    },
+    {
+      "code": "GC00",
+      "title": "Acute pyelonephritis (kidney infection)",
+      "category": "Urinary",
+      "keywords": ["kidney infection", "pyelonephritis", "flank pain", "fever with UTI", "costovertebral angle tenderness"],
+      "urgency_hint": 2,
+      "primary_care_note": "Fever + flank pain + UTI symptoms. Antibiotics urgent. Sepsis signs = Level 3."
+    },
+    {
+      "code": "GC02",
+      "title": "Lower urinary tract infection (cystitis)",
+      "category": "Urinary",
+      "keywords": ["UTI", "bladder infection", "cystitis", "burning urination", "frequent urination", "dysuria", "cloudy urine"],
+      "urgency_hint": 1,
+      "primary_care_note": "Uncomplicated UTI. Treat with antibiotics. Level 1 unless fever or back pain."
+    },
+    {
+      "code": "1B11",
+      "title": "Tuberculosis (pulmonary)",
+      "category": "Infectious",
+      "keywords": ["tuberculosis", "TB", "chronic cough", "cough more than 2 weeks", "night sweats", "weight loss", "hemoptysis", "blood in sputum"],
+      "urgency_hint": 2,
+      "primary_care_note": "Cough >2 weeks + weight loss + night sweats. Sputum test essential. Coughing blood = Level 3."
+    },
+    {
+      "code": "1A70",
+      "title": "HIV / AIDS",
+      "category": "Infectious",
+      "keywords": ["HIV", "AIDS", "opportunistic infection", "thrush", "weight loss", "chronic diarrhea", "lymphadenopathy", "Kaposi sarcoma"],
+      "urgency_hint": 2,
+      "primary_care_note": "Specialist referral. Acute opportunistic infections (PCP, cryptococcal meningitis) = Level 3."
+    },
+    {
+      "code": "5A60",
+      "title": "Diabetic ketoacidosis (DKA)",
+      "category": "Endocrine",
+      "keywords": ["DKA", "diabetic ketoacidosis", "fruity breath", "Kussmaul breathing", "polyuria with vomiting", "high blood sugar with vomiting"],
+      "urgency_hint": 3,
+      "primary_care_note": "Always Level 3. Diabetic with vomiting + rapid breathing + altered consciousness."
+    },
+    {
+      "code": "5A41",
+      "title": "Hypoglycemia",
+      "category": "Endocrine",
+      "keywords": ["hypoglycemia", "low blood sugar", "shakiness", "sweating", "confusion in diabetic", "altered mental status diabetes"],
+      "urgency_hint": 3,
+      "primary_care_note": "Diabetic + confusion/altered consciousness = Level 3. Give sugar immediately if able to swallow."
+    },
+    {
+      "code": "EA80",
+      "title": "Cellulitis",
+      "category": "Skin",
+      "keywords": ["cellulitis", "skin infection", "red hot swollen skin", "spreading redness", "skin warm to touch", "erysipelas"],
+      "urgency_hint": 2,
+      "primary_care_note": "Antibiotics needed. Spreading rapidly, fever, or near eye/face = Level 3."
+    },
+    {
+      "code": "EH00",
+      "title": "Burns",
+      "category": "Skin/Trauma",
+      "keywords": ["burn", "thermal injury", "scald", "blistering burn", "second degree burn", "third degree burn", "chemical burn"],
+      "urgency_hint": 2,
+      "primary_care_note": "Level depends on size and depth. >10% body surface, face, hands, or genitals = Level 3."
+    },
+    {
+      "code": "NA0Z",
+      "title": "Head injury / concussion",
+      "category": "Trauma",
+      "keywords": ["head injury", "concussion", "head trauma", "loss of consciousness after fall", "vomiting after head injury", "confusion after blow"],
+      "urgency_hint": 2,
+      "primary_care_note": "LOC, vomiting, severe headache, or worsening over hours = Level 3 (intracranial hemorrhage)."
+    },
+    {
+      "code": "PA20",
+      "title": "Snake bite",
+      "category": "Trauma",
+      "keywords": ["snake bite", "snakebite", "fang marks", "swelling at bite site", "venom envenomation"],
+      "urgency_hint": 3,
+      "primary_care_note": "Always Level 3. Immobilize limb, transport to facility with antivenom. Do not cut/suck wound."
+    },
+    {
+      "code": "BD20",
+      "title": "Severe dehydration",
+      "category": "Pediatric/General",
+      "keywords": ["severe dehydration", "sunken eyes", "no tears", "very dry mouth", "no urine output", "lethargy from dehydration", "skin tenting"],
+      "urgency_hint": 3,
+      "primary_care_note": "WHO ETAT priority sign. Especially critical in children. IV or NG fluids needed."
+    },
+    {
+      "code": "9A00",
+      "title": "Acute conjunctivitis",
+      "category": "Eye",
+      "keywords": ["conjunctivitis", "pink eye", "red eye discharge", "itchy eyes with discharge", "viral conjunctivitis", "bacterial conjunctivitis"],
+      "urgency_hint": 1,
+      "primary_care_note": "Self-limiting if viral. Topical antibiotics if bacterial. Pain/vision loss = Level 3 (rule out keratitis/uveitis)."
+    },
+    {
+      "code": "AA60",
+      "title": "Acute otitis media",
+      "category": "Ear",
+      "keywords": ["ear infection", "earache", "ear pain in child", "fever with ear pain", "otitis media", "AOM"],
+      "urgency_hint": 1,
+      "primary_care_note": "Common in children. Antibiotics if severe or prolonged. Mastoiditis (swelling behind ear) = Level 3."
+    },
+    {
+      "code": "FA60",
+      "title": "Lower back pain (non-specific)",
+      "category": "Musculoskeletal",
+      "keywords": ["back pain", "lumbar pain", "sciatica", "muscle strain back", "lumbago"],
+      "urgency_hint": 1,
+      "primary_care_note": "Most self-limiting. Red flags: trauma, fever, weakness, bowel/bladder dysfunction → Level 3 (cauda equina)."
+    },
+    {
+      "code": "MD12",
+      "title": "Vaginal bleeding (abnormal uterine)",
+      "category": "OB/GYN",
+      "keywords": ["abnormal vaginal bleeding", "menorrhagia", "metrorrhagia", "heavy periods", "intermenstrual bleeding", "postmenopausal bleeding"],
+      "urgency_hint": 2,
+      "primary_care_note": "Reproductive age + heavy bleeding + lightheaded = consider Level 3 (hemorrhage)."
+    },
+    {
+      "code": "MD90",
+      "title": "Anaphylaxis",
+      "category": "Allergic/Immune",
+      "keywords": ["anaphylaxis", "severe allergic reaction", "throat swelling", "difficulty breathing after exposure", "hives with wheeze", "tongue swelling"],
+      "urgency_hint": 3,
+      "primary_care_note": "Always Level 3. Epinephrine immediately if available. Airway compromise risk."
+    },
+    {
+      "code": "EK00",
+      "title": "Eczema / atopic dermatitis",
+      "category": "Skin",
+      "keywords": ["eczema", "atopic dermatitis", "itchy skin rash", "dry scaly skin", "flexural rash"],
+      "urgency_hint": 1,
+      "primary_care_note": "Chronic. Topical emollients and steroids. Infection (oozing, crusting) = treat."
+    },
+    {
+      "code": "EI80",
+      "title": "Scabies",
+      "category": "Skin/Infectious",
+      "keywords": ["scabies", "intense itching", "burrows in skin", "night itching", "rash between fingers", "household spread itch"],
+      "urgency_hint": 1,
+      "primary_care_note": "Common in crowded settings (refugee camps). Permethrin treatment. Treat all close contacts."
+    },
+    {
+      "code": "LB10",
+      "title": "Acute malnutrition (severe)",
+      "category": "Pediatric/Nutrition",
+      "keywords": ["severe malnutrition", "marasmus", "kwashiorkor", "edema malnutrition", "wasting child", "MUAC red"],
+      "urgency_hint": 3,
+      "primary_care_note": "WHO IMCI: bilateral edema or MUAC <115mm in children = Level 3. Therapeutic feeding required."
+    },
+    {
+      "code": "MG30.0",
+      "title": "Sepsis",
+      "category": "Infectious/Critical",
+      "keywords": ["sepsis", "septic shock", "fever with low blood pressure", "altered mental status with fever", "warm shock", "cold shock"],
+      "urgency_hint": 3,
+      "primary_care_note": "Always Level 3. WHO ETAT priority sign. Time-critical antibiotic + fluid resuscitation."
+    }
+  ]
+}
