@@ -2,6 +2,22 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'gemma_service.dart';
 
+// ─── 医療セッション履歴の保存 ─────────────────────────────────
+//
+// at-rest 暗号化は Android File-Based Encryption (FBE) に委譲。
+// Android 7+ では app-private storage (SharedPreferences の保存先含む)
+// が端末の hardware-backed Keystore key で自動暗号化されており、
+// 端末をロックしている限り別アプリ・root 化していない adb backup から
+// 読めない。さらに本アプリは:
+//   - android:allowBackup="false"        (Google Drive 同期防止)
+//   - data_extraction_rules で D2D 拒否  (機種変更時転送防止)
+//   - アンインストール時に自動削除 (GDPR Art.17)
+// により at-rest 露出面を最小化している。
+//
+// 当初 flutter_secure_storage で application-level の二重暗号化を
+// 計画したが、wakelock_plus との依存衝突で kernel_snapshot ビルド
+// エラーが発生したため defer (security_plan.md に記録)。
+
 class SavedResult {
   final TriageResult result;
   final DateTime timestamp;
@@ -62,8 +78,12 @@ class SessionService {
   static String timeAgo(DateTime dt) {
     final diff = DateTime.now().difference(dt);
     if (diff.inMinutes < 1) return 'Just now / たった今';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago / ${diff.inMinutes}分前';
-    if (diff.inHours < 24) return '${diff.inHours} h ago / ${diff.inHours}時間前';
+    if (diff.inMinutes < 60) {
+      return '${diff.inMinutes} min ago / ${diff.inMinutes}分前';
+    }
+    if (diff.inHours < 24) {
+      return '${diff.inHours} h ago / ${diff.inHours}時間前';
+    }
     return '${diff.inDays} days ago / ${diff.inDays}日前';
   }
 }

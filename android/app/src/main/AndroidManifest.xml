@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- マイク・カメラ・インターネットのパーミッション -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.CAMERA"/>
@@ -25,7 +26,11 @@
         android:icon="@mipmap/ic_launcher"
         android:largeHeap="true"
         android:hardwareAccelerated="true"
-        android:enableOnBackInvokedCallback="true">
+        android:enableOnBackInvokedCallback="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -53,6 +58,22 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- ★ WorkManager の SystemForegroundService に foregroundServiceType を
+             明示宣言する。Android 14 (API 34) 以降は manifest 側に
+             foregroundServiceType の宣言がないと、startForeground() で
+             "foregroundServiceType is not a subset of foregroundServiceType
+             attribute in service element of manifest" の RuntimeException で
+             クラッシュする。
+             tools:replace="android:foregroundServiceType" で WorkManager 標準の
+             空属性を上書きする (manifest merger conflict 回避)。
+             dataSync を指定するのは:
+              - background_downloader が大容量モデル DL に使うため
+              - AndroidManifest 上部の FOREGROUND_SERVICE_DATA_SYNC 権限と整合 -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:replace="android:foregroundServiceType" />
 
         <!-- flutter_gemma GPU acceleration (LiteRT-LM)
              これらが無いと GPU フォールバックして CPU 推論になり激遅 -->

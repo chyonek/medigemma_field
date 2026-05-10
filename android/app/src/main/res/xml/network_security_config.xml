@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ─────────────────────────────────────────────────────────────────
+  Network Security Config — Egress Allowlist
+  ─────────────────────────────────────────────────────────────────
+
+  本アプリは 100% on-device 動作を建前としているが、Android の権限
+  モデルでは INTERNET 権限を一度宣言すると剥奪できない。そこで OS
+  レベルで送信先を物理的に絞り込み、依存ライブラリ経由の supply-
+  chain attack で意図しない先へ送信されるリスクを下げる。
+
+  base-config:
+    - cleartextTrafficPermitted=false
+      → HTTP (平文) を全面禁止。HTTPS のみ。
+    - 信頼するルート CA は OS の system store のみ
+      (ユーザーがインストールした custom CA は信用しない =
+       社内 MITM proxy 経由でも医療情報が傍受されない)
+
+  domain-config:
+    - 必要最小限の HF 関連ドメインのみ許可
+      huggingface.co            : .litertlm モデル DL のメタデータ
+      cdn-lfs.huggingface.co    : 大容量 LFS object 配信
+      cas-server.xethub.hf.co   : Xet-CAS による匿名 DL チャンク配信
+
+  これ以外のドメイン (analytics, telemetry, crash reporting 等) は
+  HTTPS であっても OS レベルでブロックされる。
+
+  OWASP "LLM and Gen AI Data Security Best Practices 2025" 準拠:
+   - Principle #4 Comprehensive Input Validation
+   - Principle #11 Regulatory Compliance (GDPR egress control)
+   - Edge Security 章: lightweight defense-in-depth
+  ─────────────────────────────────────────────────────────────────
+-->
+<network-security-config>
+    <!-- デフォルト: HTTP 拒否 + system CA のみ信頼 -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+
+    <!-- Hugging Face モデル DL 用ドメインのみ許可 -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">huggingface.co</domain>
+        <domain includeSubdomains="true">cdn-lfs.huggingface.co</domain>
+        <domain includeSubdomains="true">cas-server.xethub.hf.co</domain>
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ─────────────────────────────────────────────────────────────────
+  Data Extraction Rules (Android 12+ / API 31+)
+  ─────────────────────────────────────────────────────────────────
+
+  Android 12 以降は android:allowBackup の代わりに細粒度の
+  dataExtractionRules を使う。本アプリは医療データを扱うため、
+  cloud backup と device-to-device transfer の両方を完全に拒否する。
+
+  これにより:
+   - SharedPreferences (翻訳キャッシュ・セッション履歴) が
+     Google Drive に同期されない
+   - 機種変更時の自動データ転送でも医療セッションが移らない
+   - GDPR Article 17 (削除権) 自動準拠 — アンインストール=完全削除
+
+  OWASP "LLM and Gen AI Data Security Best Practices 2025" 準拠:
+   - Principle #2 Robust Data Encryption (at-rest 露出面の最小化)
+   - Principle #11 Regulatory Compliance (GDPR/HIPAA)
+  ─────────────────────────────────────────────────────────────────
+-->
+<data-extraction-rules>
+    <!-- クラウドバックアップ (Google Drive 経由) を完全拒否 -->
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+
+    <!-- 機種変更時の端末間転送 (D2D) も完全拒否 -->
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
