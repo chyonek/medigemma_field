@@ -807,11 +807,11 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
     }
 
     // 選択中の部位ラベル（翻訳を優先・フォールバックは英語）
-    final selectedLabels = _regions
+    final selectedEntries = _regions
         .map((k) {
           final r = _allBodyRegions
               .firstWhere((r) => r.key == k, orElse: () => _Choice(k, k, k));
-          return _lbl('body', r.key, r.labelEn);
+          return MapEntry(k, _lbl('body', r.key, r.labelEn));
         })
         .toList();
 
@@ -855,11 +855,14 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
         ),
         const SizedBox(height: 12),
 
-        // 選択中の部位サマリー
-        if (selectedLabels.isNotEmpty)
+        // 選択中の部位サマリー (削除可能なチップ + カウント)
+        // ★ 体図と部位チップで重複選択された場合、ここで「2 選択中」と
+        //   一目で分かる。各チップに × があるのでタップで個別削除可能。
+        //   テキストヒントを読まないユーザーでも視覚的に気付ける。
+        if (selectedEntries.isNotEmpty)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
             decoration: BoxDecoration(
               color: const Color(0xFF1565C0).withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(8),
@@ -867,17 +870,57 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
                   color: const Color(0xFF1565C0).withValues(alpha: 0.5),
                   width: 1),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.check_circle,
-                    color: Color(0xFF42A5F5), size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Selected: ${selectedLabels.join("、")}',
-                    style: const TextStyle(
-                        color: Colors.white, fontSize: 15),
-                  ),
+                Row(
+                  children: [
+                    const Icon(Icons.check_circle,
+                        color: Color(0xFF42A5F5), size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${_t.t('q_selected_label')} (${selectedEntries.length})',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: selectedEntries.map((entry) {
+                    return InkWell(
+                      onTap: () => toggleRegion(entry.key),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF42A5F5)
+                              .withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                              color: const Color(0xFF42A5F5),
+                              width: 1),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(entry.value,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500)),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.close,
+                                color: Colors.white, size: 16),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
               ],
             ),

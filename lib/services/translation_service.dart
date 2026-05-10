@@ -52,9 +52,9 @@ class TranslationService extends ChangeNotifier {
   // 翻訳済みのキー数（PostDownloadSetupScreen の進捗表示用）
   int get translatedCount => _translations.length;
 
-  // v4: result_details_header を 'Care instructions' に変更 + triage 言い換え
-  //     → 既存ユーザーのキャッシュには古い「詳細」「トリアージ」が残るため bump
-  static const _cacheKeyPrefix = 'ui_translations_v4_';
+  // v5: result_details_header を 'Suggested care steps' に変更
+  //     → 「受診時の注意点」誤訳回避のため
+  static const _cacheKeyPrefix = 'ui_translations_v5_';
   static const _localeOverrideKey = 'ui_locale_override';
 
   // ─── マスター UI 文字列（英語・このアプリで唯一の "ハードコード"） ──
@@ -170,7 +170,7 @@ class TranslationService extends ChangeNotifier {
     'result_conditions_dx_label': 'Differential diagnosis',
     'result_conditions_disclaimer':
         'These are possibilities, not a confirmed diagnosis.',
-    'result_details_header': 'Care instructions',
+    'result_details_header': 'Suggested care steps',
     'result_disclaimer':
         'This is not a substitute for professional medical diagnosis.',
     'result_long_press_hint': 'Long-press to select & copy',
@@ -211,6 +211,7 @@ class TranslationService extends ChangeNotifier {
     'q_intro':
         'Fill in what you can. AI will ask follow-up questions if needed.',
     'q_other_parts_label': 'Other parts',
+    'q_selected_label': 'Selected',  // body-region selection summary card label
     'q_mirror_view': 'Mirror view: your left = diagram\'s left',
     'q_age_label': 'Age',
     'q_sex_label': 'Sex',

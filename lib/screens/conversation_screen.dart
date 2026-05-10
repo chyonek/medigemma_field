@@ -237,7 +237,51 @@ class _ConversationScreenState extends State<ConversationScreen>
 
   Future<void> _speakQuestion(String text, String langCode) async {
     final ttsLang = langCode == 'ar' ? 'ar-SA' : langCode;
-    await _tts.setLanguage(ttsLang);
+
+    // ★ Android の TTS エンジンは Japanese を要求しても Chinese 音声が
+    //   流れることがある (CJK 漢字を Chinese voice で読み上げてしまう)。
+    //   isLanguageAvailable で確認し、利用可能なら明示設定。
+    //   さらに setVoice で voice 自体を pin して言語崩れを防ぐ。
+    try {
+      final available = await _tts.isLanguageAvailable(ttsLang);
+      debugPrint('[TTS] $ttsLang available: $available');
+      if (available == true || available == 1) {
+        await _tts.setLanguage(ttsLang);
+        // 利用可能な voice の中から目的言語に一致するものを探して固定
+        final voices = await _tts.getVoices;
+        if (voices is List) {
+          final langPrefix = ttsLang.split('-').first;
+          final matched = voices.firstWhere(
+            (v) {
+              if (v is! Map) return false;
+              final locale = (v['locale'] ?? '').toString().toLowerCase();
+              return locale == ttsLang.toLowerCase() ||
+                  locale.startsWith('$langPrefix-') ||
+                  locale.startsWith(langPrefix);
+            },
+            orElse: () => null,
+          );
+          if (matched != null && matched is Map) {
+            await _tts.setVoice({
+              'name': matched['name']?.toString() ?? '',
+              'locale': matched['locale']?.toString() ?? ttsLang,
+            });
+            debugPrint('[TTS] pinned voice: ${matched['name']} (${matched['locale']})');
+          }
+        }
+      } else {
+        debugPrint('[TTS] WARN: $ttsLang not available — TTS may fall back '
+            'to a different language. Skip speak() to avoid wrong-language audio.');
+        // 言語が無い → 読み上げスキップ (中国語混入を防ぐ)
+        if (mounted && _stage == _Stage.ttsReading) {
+          setState(() => _stage = _Stage.followUpInput);
+        }
+        return;
+      }
+    } catch (e) {
+      debugPrint('[TTS] language setup failed: $e');
+    }
+
     _tts.setCompletionHandler(() {
       if (mounted && _stage == _Stage.ttsReading) {
         setState(() => _stage = _Stage.followUpInput);
@@ -271,21 +315,26 @@ class _ConversationScreenState extends State<ConversationScreen>
       _stage = _Stage.followUpVoice;
       _voiceTranscribed = '';
     });
+    // ★ Android の confirmation モードは短答 ("5", "はい" 等) で finalResult を
+    //   発火しないことがある (実機検証で確認)。dictation モードに切替し、
+    //   pauseFor を短く (1.5s silence で auto-stop)、listenFor も短くする。
+    //   さらに手動停止時に最後の partial result を採用するよう defensively 改修。
     await _speech.listen(
       onResult: (r) {
         if (!mounted) return;
-        setState(() => _voiceTranscribed = r.recognizedWords);
+        // 空でない結果のみ保存 (空の partial で上書きしない)
+        if (r.recognizedWords.trim().isNotEmpty) {
+          setState(() => _voiceTranscribed = r.recognizedWords);
+        }
         if (r.finalResult) _handleFollowUpVoiceRecorded();
       },
-      // フォローアップは「5」「はい」等の短答が中心 → confirmation モードで
-      // 沈黙検出を短く・最大録音時間も短く
       listenOptions: SpeechListenOptions(
-        listenMode: ListenMode.confirmation,
+        listenMode: ListenMode.dictation,
         partialResults: true,
         cancelOnError: true,
       ),
-      pauseFor: const Duration(milliseconds: 800),
-      listenFor: const Duration(seconds: 12),
+      pauseFor: const Duration(milliseconds: 1500),
+      listenFor: const Duration(seconds: 8),
     );
   }
 
@@ -312,6 +361,11 @@ class _ConversationScreenState extends State<ConversationScreen>
   // ─── マイクボタン手動停止 ─────────────────────────────
   Future<void> _stopVoiceManually() async {
     await _speech.stop();
+    // ★ 手動停止後に少し待つ: speech_to_text engine は stop() 後に
+    //   最後の onResult (finalResult=true) を遅延発火することがある。
+    //   500ms 待ってから処理することで取りこぼしを減らす。
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
     if (_stage == _Stage.voiceListening) {
       _handleInitialVoiceRecorded();
     } else if (_stage == _Stage.followUpVoice) {
@@ -661,7 +715,14 @@ class _ConversationScreenState extends State<ConversationScreen>
       itemCount: _messages.length + (_stage == _Stage.analyzing ? 1 : 0),
       itemBuilder: (_, i) {
         if (i == _messages.length) return const _TypingBubble();
-        return _MessageBubble(message: _messages[i]);
+        // ★ ValueKey を付与して既存 State を再利用させる。
+        //   これがないと新メッセージ追加時に全 bubble の typewriter が
+        //   再起動されてしまう (text + isUser の組合せでメッセージを識別)。
+        final m = _messages[i];
+        return _MessageBubble(
+          key: ValueKey('msg_${i}_${m.isUser}_${m.text.hashCode}'),
+          message: m,
+        );
       },
     );
 
