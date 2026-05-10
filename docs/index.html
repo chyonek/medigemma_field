@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MediGemma Field — Frontier healthcare for those beyond the frontier</title>
+  <meta name="description" content="100% on-device medical triage AI. Works fully offline in 140 languages. No subscription, no data fees, no backend. Built for refugee camps, rural communities, and conflict zones." />
+
+  <!-- Open Graph for social sharing -->
+  <meta property="og:title" content="MediGemma Field" />
+  <meta property="og:description" content="100% on-device medical triage AI. Works offline in 140 languages." />
+  <meta property="og:image" content="assets/landing_hero.png" />
+  <meta property="og:type" content="website" />
+
+  <!--
+    BEFORE PUBLISHING — replace these placeholders:
+      [YOUTUBE_VIDEO_ID]   → actual YouTube video ID
+      [APK_RELEASE_URL]    → actual GitHub Release APK URL
+      [GITHUB_REPO_URL]    → already set if chyonek/medigemma_field
+  -->
+
+  <style>
+    :root {
+      --teal:        #00897B;
+      --teal-dark:   #00695C;
+      --orange:      #E65100;
+      --orange-soft: #FFA726;
+      --cream:       #FFFBF0;
+      --mint:        #E0F2F1;
+      --peach:       #FFD4A3;
+      --charcoal:    #1A1A1A;
+      --gray:        #5A5A5A;
+      --light-gray:  #B8B8B8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", "Hiragino Sans", "Yu Gothic UI", Roboto, sans-serif;
+      color: var(--charcoal);
+      background: var(--cream);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--teal); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ─── Hero ─────────────────────────────────────────── */
+    .hero {
+      position: relative;
+      padding: 80px 24px 60px;
+      background: linear-gradient(180deg, var(--peach) 0%, var(--cream) 60%, var(--mint) 100%);
+      text-align: center;
+      overflow: hidden;
+    }
+    .hero-icon {
+      width: 96px; height: 96px;
+      border-radius: 24px;
+      box-shadow: 0 8px 24px rgba(0, 137, 123, 0.18);
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-size: clamp(32px, 5vw, 52px);
+      color: var(--teal-dark);
+      margin-bottom: 12px;
+      letter-spacing: -0.02em;
+    }
+    .hero .tagline {
+      font-size: clamp(16px, 2.2vw, 22px);
+      color: var(--gray);
+      max-width: 720px;
+      margin: 0 auto 28px;
+    }
+    .hero-cta {
+      display: inline-flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 24px;
+      border-radius: 999px;
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: transform 0.15s, box-shadow 0.15s;
+      border: none;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--teal);
+      color: white;
+      box-shadow: 0 4px 12px rgba(0, 137, 123, 0.3);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 137, 123, 0.4);
+      text-decoration: none;
+    }
+    .btn-secondary {
+      background: white;
+      color: var(--teal-dark);
+      border: 2px solid var(--teal);
+    }
+    .btn-secondary:hover {
+      background: var(--mint);
+      transform: translateY(-2px);
+      text-decoration: none;
+    }
+
+    /* ─── Sections ─────────────────────────────────────── */
+    section {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 64px 24px;
+    }
+    section h2 {
+      font-size: clamp(24px, 3.2vw, 36px);
+      color: var(--teal-dark);
+      margin-bottom: 16px;
+      letter-spacing: -0.01em;
+    }
+    section .lead {
+      font-size: 18px;
+      color: var(--gray);
+      max-width: 720px;
+      margin-bottom: 32px;
+    }
+
+    /* ─── Stats / problem ──────────────────────────────── */
+    .problem {
+      background: white;
+      border-top: 1px solid var(--mint);
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 24px;
+      margin-top: 24px;
+    }
+    .stat {
+      padding: 28px 20px;
+      background: var(--cream);
+      border-radius: 16px;
+      border-left: 4px solid var(--orange);
+    }
+    .stat .num {
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--teal-dark);
+      display: block;
+      margin-bottom: 4px;
+    }
+    .stat .label {
+      font-size: 14px;
+      color: var(--gray);
+      line-height: 1.4;
+    }
+    .source-note {
+      margin-top: 18px;
+      font-size: 13px;
+      color: var(--light-gray);
+    }
+
+    /* ─── Video ────────────────────────────────────────── */
+    .video {
+      background: var(--cream);
+    }
+    .video-wrap {
+      position: relative;
+      padding-bottom: 56.25%; /* 16:9 */
+      height: 0;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+      max-width: 880px;
+      margin: 0 auto;
+    }
+    .video-wrap iframe {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+
+    /* ─── Features ─────────────────────────────────────── */
+    .features {
+      background: white;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-top: 32px;
+    }
+    .feature {
+      padding: 28px;
+      background: var(--cream);
+      border-radius: 16px;
+      transition: transform 0.2s;
+    }
+    .feature:hover { transform: translateY(-4px); }
+    .feature .ico {
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+    .feature h3 {
+      color: var(--teal-dark);
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+    .feature p {
+      font-size: 15px;
+      color: var(--gray);
+    }
+
+    /* ─── Architecture ────────────────────────────────── */
+    .architecture {
+      background: var(--mint);
+    }
+    .arch-stack {
+      display: grid;
+      gap: 14px;
+      max-width: 720px;
+      margin: 32px auto 0;
+    }
+    .arch-layer {
+      background: white;
+      padding: 20px 24px;
+      border-radius: 12px;
+      border-left: 6px solid var(--teal);
+    }
+    .arch-layer.l2 { border-left-color: var(--orange-soft); }
+    .arch-layer.l3 { border-left-color: var(--orange); }
+    .arch-layer h4 {
+      color: var(--teal-dark);
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+    .arch-layer p {
+      font-size: 14px;
+      color: var(--gray);
+    }
+    .arch-arrow {
+      text-align: center;
+      color: var(--light-gray);
+      font-size: 20px;
+    }
+
+    /* ─── Footer ──────────────────────────────────────── */
+    footer {
+      background: var(--charcoal);
+      color: var(--light-gray);
+      padding: 48px 24px;
+      text-align: center;
+      font-size: 14px;
+    }
+    footer .links {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    footer a {
+      color: var(--mint);
+    }
+    footer .meta {
+      color: #888;
+      font-size: 12px;
+      line-height: 1.5;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ━━━━━ Hero ━━━━━ -->
+  <header class="hero">
+    <img class="hero-icon" src="assets/app_icon.png" alt="MediGemma Field icon" />
+    <h1>MediGemma Field</h1>
+    <p class="tagline">
+      Frontier healthcare for those beyond the frontier.<br />
+      <strong>100&nbsp;% on-device · 140&nbsp;languages · works fully offline.</strong>
+    </p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="#video">▶ Watch the demo</a>
+      <a class="btn btn-secondary" href="[APK_RELEASE_URL]">⬇ Download APK</a>
+    </div>
+  </header>
+
+  <!-- ━━━━━ Problem ━━━━━ -->
+  <section class="problem">
+    <h2>The problem nobody can afford</h2>
+    <p class="lead">
+      For billions of people, the question <em>"should I take my child to the hospital, or wait at home?"</em> is life-critical — and yet the medical companion apps that could help them all assume a stable internet connection. We built one that doesn't.
+    </p>
+    <div class="stats">
+      <div class="stat">
+        <span class="num">4.5 B</span>
+        <span class="label">people lack access to basic health services worldwide<br /><em>(WHO 2024)</em></span>
+      </div>
+      <div class="stat">
+        <span class="num">3.1 B</span>
+        <span class="label">in the "Usage Gap" — coverage exists, but data costs and devices keep them offline<br /><em>(GSMA 2025)</em></span>
+      </div>
+      <div class="stat">
+        <span class="num">10×</span>
+        <span class="label">the Usage Gap is 10 times larger than the Coverage Gap. Internet-dependent apps fail them.</span>
+      </div>
+      <div class="stat">
+        <span class="num">960 M</span>
+        <span class="label">in Sub-Saharan Africa alone, "connected on paper" but offline in practice</span>
+      </div>
+    </div>
+    <p class="source-note">
+      Sources: <a href="https://www.who.int/publications/i/item/9789240080379">WHO &amp; World Bank Tracking universal health coverage</a> · <a href="https://www.gsmaintelligence.com/research/the-state-of-mobile-internet-connectivity-2025-overview-report">GSMA State of Mobile Internet Connectivity 2025</a>
+    </p>
+  </section>
+
+  <!-- ━━━━━ Video ━━━━━ -->
+  <section class="video" id="video">
+    <h2>3 minutes to see it in action</h2>
+    <p class="lead">
+      Filmed in airplane mode. No internet, no API, no backend — just a phone, a Gemma 4 model, and a clear answer to <em>"what should I do right now?"</em>
+    </p>
+    <div class="video-wrap">
+      <iframe
+        src="https://www.youtube.com/embed/[YOUTUBE_VIDEO_ID]"
+        title="MediGemma Field — 3-minute demo"
+        frameborder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen></iframe>
+    </div>
+  </section>
+
+  <!-- ━━━━━ Features ━━━━━ -->
+  <section class="features">
+    <h2>What makes it different</h2>
+    <p class="lead">Built for users that mainstream healthcare apps quietly leave behind.</p>
+    <div class="feature-grid">
+      <div class="feature">
+        <div class="ico">📡</div>
+        <h3>Works fully offline</h3>
+        <p>After a one-time 2.4 GB download, no internet is ever needed. The AI lives on the phone.</p>
+      </div>
+      <div class="feature">
+        <div class="ico">🌍</div>
+        <h3>140 languages, native</h3>
+        <p>The UI itself is translated by Gemma 4 on-device — every region, every dialect target.</p>
+      </div>
+      <div class="feature">
+        <div class="ico">🔒</div>
+        <h3>GDPR &amp; HIPAA by design</h3>
+        <p>No backend, no API, no telemetry. Medical data never leaves the device. Uninstall = full erasure.</p>
+      </div>
+      <div class="feature">
+        <div class="ico">🎤</div>
+        <h3>Voice + photo + text</h3>
+        <p>Speak in your language, attach a photo of a wound, or tap symptom chips. Switch input any turn.</p>
+      </div>
+      <div class="feature">
+        <div class="ico">🩺</div>
+        <h3>Built on real standards</h3>
+        <p>WHO ETAT triage · OPQRST · WHO IMCI · SBAR · HL7 FHIR · ICD-11 · NRS pain scale.</p>
+      </div>
+      <div class="feature">
+        <div class="ico">♿</div>
+        <h3>Accessible to all</h3>
+        <p>Color-blind safe (color + icon + number), 48 dp tap targets, voice-first option, WCAG 2.1 AA.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ━━━━━ Architecture ━━━━━ -->
+  <section class="architecture">
+    <h2>3-layer progressive enrichment</h2>
+    <p class="lead">
+      The cheapest layer runs on every turn; the most expensive layer only on confidence-driven escalation. Most user sessions never reach Layer 3 — saving battery, latency, and thermal budget on the entry-level phones that need them most.
+    </p>
+    <div class="arch-stack">
+      <div class="arch-layer">
+        <h4>Layer 1 — ICD-11 dictionary lookup &nbsp;<small style="color:var(--gray);font-weight:400;">(always, ~ms, no inference)</small></h4>
+        <p>WHO official taxonomy. Keyword extraction → injects medical context into both Layer 2 and Layer 3.</p>
+      </div>
+      <div class="arch-arrow">↓</div>
+      <div class="arch-layer l2">
+        <h4>Layer 2 — Gemma 4 E2B Standard mode &nbsp;<small style="color:var(--gray);font-weight:400;">(always, ~10 s)</small></h4>
+        <p>ICD-grounded prompt. Returns either a follow-up question, a confident triage (most turns end here), or escalates to Layer 3 when uncertain.</p>
+      </div>
+      <div class="arch-arrow">↓ (escalation only)</div>
+      <div class="arch-layer l3">
+        <h4>Layer 3 — Gemma 4 E2B Thinking mode &nbsp;<small style="color:var(--gray);font-weight:400;">(~80 s)</small></h4>
+        <p>Same ICD context + full Q&amp;A history. Internal step-by-step reasoning for the difficult cases.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ━━━━━ Footer ━━━━━ -->
+  <footer>
+    <div class="links">
+      <a href="[GITHUB_REPO_URL]">GitHub</a>
+      <a href="https://www.kaggle.com/competitions/gemma-4-good-hackathon">Hackathon page</a>
+      <a href="https://ai.google.dev/gemma">About Gemma 4</a>
+      <a href="https://icd.who.int/browse11">ICD-11 (WHO)</a>
+    </div>
+    <p class="meta">
+      Submitted to the <strong>Gemma 4 Good Hackathon — Impact Track / Health &amp; Sciences</strong>.<br />
+      Eligible for the LiteRT Prize and Cactus Prize.<br />
+      Code: CC-BY 4.0 · Gemma 4: Apache 2.0 · ICD-11: CC BY-ND 3.0 IGO (WHO)<br />
+      <em>Built for the 4.5 billion who still cannot reliably reach a doctor.</em>
+    </p>
+  </footer>
+
+</body>
+</html>

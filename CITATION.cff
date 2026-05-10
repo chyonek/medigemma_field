@@ -1,0 +1,84 @@
+# Citation File Format
+# https://citation-file-format.github.io/
+# GitHub auto-recognizes this file and shows a "Cite this repository" button.
+
+cff-version: 1.2.0
+title: "MediGemma Field: Frontier healthcare for those beyond the frontier"
+message: >-
+  If you reference this project in research or articles, please cite using
+  the metadata below.
+type: software
+authors:
+  - alias: chyonek
+    family-names: chyonek
+abstract: >-
+  An Android application that delivers WHO ETAT-aligned medical triage to
+  remote and low-resource settings entirely on the user's phone, using
+  Google's Gemma 4 model running on-device via LiteRT-LM. Designed for the
+  4.5 billion people worldwide who lack access to basic health services
+  (WHO 2024) and the 3.1 billion who fall in the GSMA "Usage Gap" (2025).
+
+  Architecturally novel: a 3-layer "progressive enrichment" pipeline that
+  routes work to the cheapest viable model layer first (ICD-11 keyword
+  lookup → Gemma 4 Standard mode → Gemma 4 Thinking mode), saving battery,
+  latency, and thermal budget on the entry-level phones that need them most.
+
+  Privacy-by-design: no backend, no API key, no telemetry. Medical data
+  never leaves the device. GDPR Article 17 (right to erasure) satisfied
+  by app uninstall. Brand mark is religiously and culturally neutral
+  (cupped hand offering a light, not a medical cross).
+keywords:
+  - on-device-ai
+  - medical-triage
+  - gemma-4
+  - litert-lm
+  - flutter
+  - global-health
+  - offline-first
+  - multilingual
+  - WHO-ETAT
+  - ICD-11
+  - hackathon
+license: CC-BY-4.0
+repository-code: "https://github.com/chyonek/medigemma_field"
+url: "https://chyonek.github.io/medigemma_field/"
+version: "1.0.0"
+date-released: "2026-05-18"
+
+# Hackathon submission context
+identifiers:
+  - type: url
+    value: "https://www.kaggle.com/competitions/gemma-4-good-hackathon"
+    description: "Gemma 4 Good Hackathon (Kaggle × Google)"
+
+# Preferred citation as APA-like text (used when bibtex/CFF rendering not supported)
+preferred-citation:
+  type: software
+  title: "MediGemma Field: Frontier healthcare for those beyond the frontier"
+  authors:
+    - alias: chyonek
+      family-names: chyonek
+  year: 2026
+  url: "https://github.com/chyonek/medigemma_field"
+  notes: >-
+    Submitted to the Gemma 4 Good Hackathon (Kaggle × Google),
+    Impact Track — Health & Sciences. Eligible for the LiteRT Prize
+    and the Cactus Prize.
+
+# Third-party components used (informational, not part of citation)
+references:
+  - type: software
+    title: "Gemma 4"
+    authors:
+      - name: "Google DeepMind"
+    year: 2026
+    url: "https://ai.google.dev/gemma"
+    license: Apache-2.0
+  - type: data
+    title: "International Classification of Diseases, 11th Revision (ICD-11)"
+    authors:
+      - name: "World Health Organization"
+    year: 2019
+    url: "https://icd.who.int/browse11"
+    license: CC-BY-ND-3.0-IGO
+    notes: "Used unmodified per the no-derivatives requirement of the license."
