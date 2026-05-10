@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../services/gemma_service.dart';
@@ -348,6 +349,7 @@ class _ConversationScreenState extends State<ConversationScreen>
   }
 
   void _submitAnswerCommon(String answer) {
+    HapticFeedback.lightImpact(); // 回答送信の触覚フィードバック
     _qaHistory.add({'q': _pendingQuestion, 'a': answer});
     setState(() {
       _messages.add(_Message(text: answer, isUser: true));

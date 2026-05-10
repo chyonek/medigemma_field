@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -198,6 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _endSession() async {
+    HapticFeedback.mediumImpact(); // 破壊的アクション開始の触覚
     final confirmed = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black54,

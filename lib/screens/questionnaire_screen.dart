@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/gemma_service.dart';
 import '../services/translation_service.dart';
@@ -298,6 +299,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
   // ─── フォーム送信 ─────────────────────────────────────────
   Future<void> _submitForm() async {
     if (!_canSubmit) return;
+    HapticFeedback.mediumImpact(); // 重要アクションの確定
     final input = _buildOriginalInput();
     _originalInput = input;
 
@@ -797,6 +799,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
   // ─── 部位選択：体図 + 補助チップ + 1行自由記述 ──────────
   Widget _bodyDiagramSection() {
     void toggleRegion(String key) {
+      HapticFeedback.selectionClick(); // 部位選択の触覚フィードバック
       setState(() {
         if (_regions.contains(key)) {
           _regions.remove(key);
