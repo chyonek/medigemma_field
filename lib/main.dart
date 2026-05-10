@@ -48,6 +48,22 @@ void main() async {
   await NotificationService.initialize();
 
   await TranslationService.instance.initialize();
+
+  // ★ Edge-to-edge (Android 15+ では default に・先取り対応)
+  //   Material 3 design guideline: 「コンテンツを画面端まで描画し、
+  //   システムバーは透過にして上に重ねる」
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+  // ★ Dark theme なので status bar / nav bar アイコンは "light"
+  //   (= bright icons on dark background — Material 3 系)
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarIconBrightness: Brightness.light,
+    systemNavigationBarContrastEnforced: false,
+  ));
+
   runApp(const MediGemmaApp());
 }
 
