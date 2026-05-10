@@ -20,42 +20,24 @@ import 'services/notification_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // .env は任意。Gemma 4 は Apache 2.0 ・匿名 DL 可能なため、本番 APK には
-  // 何のシークレットも埋め込まない設計（ハッカソン提出版もこの方式）。
-  // 開発時のみ任意に HF_TOKEN（rate limit 緩和用）を .env に置ける。
-  try {
-    await dotenv.load(fileName: '.env');
-  } catch (e) {
-    debugPrint('[main] .env not loaded (expected in production): $e');
+  // ★ セキュリティ: release ビルドでは debugPrint を no-op に差し替える。
+  //   Flutter の debugPrint はデフォルトで release でも動作するため、
+  //   患者の主訴・AI raw response・エラースタック等が logcat に残る。
+  //   共有端末で `adb logcat` できる環境では医療データが漏れるため
+  //   本番ビルドでは完全に黙らせる。kDebugMode/kProfileMode では維持して
+  //   開発者体験は損なわない。
+  //   OWASP "LLM and Gen AI Data Security Best Practices 2025"
+  //   Principle #7 Secure Development & Audit Logging Best Practice 準拠。
+  if (kReleaseMode) {
+    debugPrint = (String? message, {int? wrapWidth}) {};
   }
 
-  // flutter_gemma 0.15.0：アプリ起動時に一度だけ初期化
-  // Gemma 4 は HF トークン不要だが、開発時に .env の HF_TOKEN があれば
-  // rate limit 緩和のため使用（任意）
-  final hfToken = dotenv.env['HF_TOKEN']?.trim();
-  await FlutterGemma.initialize(
-    huggingFaceToken: (hfToken != null && hfToken.isNotEmpty) ? hfToken : null,
-    maxDownloadRetries: 10,
-  );
-  debugPrint(
-      '[main] FlutterGemma initialized (HF token: ${(hfToken != null && hfToken.isNotEmpty) ? "configured" : "anonymous"})');
-
-  // ICD-11 辞書ロード（Layer 1 ルックアップ用・assets から）
-  // モデル DL の有無に関係なく即座に使えるように起動時に実行
-  await IcdService.instance.initialize();
-
-  // ローカル通知（DL 完了・Setup 完了通知用）
-  await NotificationService.initialize();
-
-  await TranslationService.instance.initialize();
-
-  // ★ Edge-to-edge (Android 15+ では default に・先取り対応)
-  //   Material 3 design guideline: 「コンテンツを画面端まで描画し、
-  //   システムバーは透過にして上に重ねる」
+  // ★ Edge-to-edge / SystemUI 設定だけ先に走らせ、すぐ runApp する。
+  //   IcdService / TranslationService / FlutterGemma.initialize 等の重い
+  //   init は StartupScreen に移して進捗 UI 付きで実行する。
+  //   こうしないと OS が low-memory で kill → 再起動した cold start で
+  //   Android 12 splash が数十秒残って「固まった」ように見える問題が起きる。
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-
-  // ★ Dark theme なので status bar / nav bar アイコンは "light"
-  //   (= bright icons on dark background — Material 3 系)
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
@@ -65,6 +47,35 @@ void main() async {
   ));
 
   runApp(const MediGemmaApp());
+}
+
+/// 起動時の重い初期化を 1 か所にまとめる。StartupScreen が進捗を見せながら
+/// この Future を await する。プロセス kill → 再起動の cold start でも、
+/// Flutter UI が即座に表示されて「splash で固まった」UX を回避する。
+Future<void> _bootstrapHeavyInit() async {
+  // .env は任意 (開発時の HF token のみ)。
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    debugPrint('[bootstrap] .env not loaded (expected in production): $e');
+  }
+
+  // flutter_gemma 0.15.0：アプリ起動時に一度だけ初期化。
+  // Gemma 4 は HF トークン不要だが、開発時に .env の HF_TOKEN があれば
+  // rate limit 緩和のため使用（任意）。
+  final hfToken = dotenv.env['HF_TOKEN']?.trim();
+  await FlutterGemma.initialize(
+    huggingFaceToken: (hfToken != null && hfToken.isNotEmpty) ? hfToken : null,
+    maxDownloadRetries: 10,
+  );
+
+  // ICD-11 辞書ロード（assets JSON）+ 通知 + 翻訳キャッシュ初期化。
+  // 並列実行で時間短縮 (依存関係なし)。
+  await Future.wait([
+    IcdService.instance.initialize(),
+    NotificationService.initialize(),
+    TranslationService.instance.initialize(),
+  ]);
 }
 
 class MediGemmaApp extends StatelessWidget {
@@ -93,64 +104,148 @@ class StartupScreen extends StatefulWidget {
 }
 
 class _StartupScreenState extends State<StartupScreen> {
+  String _status = 'Starting…';
+  bool _hasError = false;
+  String _errorMessage = '';
+
   @override
   void initState() {
     super.initState();
-    _check();
+    _runBootstrap();
   }
 
-  Future<void> _check() async {
-    final hasModel = await ModelService.isModelDownloaded();
-    if (!mounted) return;
+  /// 重い init → モデル状態判定 → 適切な画面へ遷移を一連で実行。
+  /// 各段階で _status を更新してユーザーに進捗を見せる。
+  Future<void> _runBootstrap() async {
+    try {
+      setState(() => _status = 'Loading resources…');
+      await _bootstrapHeavyInit();
 
-    final navigator = Navigator.of(context);
+      if (!mounted) return;
+      setState(() => _status = 'Checking AI model…');
+      final hasModel = await ModelService.isModelDownloaded();
 
-    if (hasModel) {
-      // モデルDL済み → ホーム画面へ
-      navigator.pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
-      return;
-    }
+      if (!mounted) return;
+      final navigator = Navigator.of(context);
 
-    // モデル未DL：本番では必ずダウンロード画面（Skip preference 無視）
-    // 開発時のみ「スキップ済み」preferenceを尊重して home に直行できる
-    if (kDebugMode) {
-      final prefs = await SharedPreferences.getInstance();
-      final skipped = prefs.getBool('model_download_skipped') ?? false;
-      if (skipped) {
+      if (hasModel) {
         navigator.pushReplacement(
           MaterialPageRoute(builder: (_) => const HomeScreen()),
         );
         return;
       }
-    }
 
-    // 必ずダウンロード画面を表示（毎回起動時、モデル無ければ強制）
-    // DL 完了 → PostDownloadSetup（モデルウォームアップ + 翻訳）→ HomeScreen
-    navigator.pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => ModelDownloadScreen(
-          onComplete: () => navigator.pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => PostDownloadSetupScreen(
-                onComplete: () => navigator.pushReplacement(
-                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+      // 開発時のみ「スキップ済み」preference 尊重
+      if (kDebugMode) {
+        final prefs = await SharedPreferences.getInstance();
+        final skipped = prefs.getBool('model_download_skipped') ?? false;
+        if (skipped) {
+          navigator.pushReplacement(
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
+          return;
+        }
+      }
+
+      // 必ずダウンロード画面を表示（毎回起動時、モデル無ければ強制）
+      navigator.pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => ModelDownloadScreen(
+            onComplete: () => navigator.pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => PostDownloadSetupScreen(
+                  onComplete: () => navigator.pushReplacement(
+                    MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    );
+      );
+    } catch (e, stack) {
+      debugPrint('[StartupScreen] bootstrap error: $e\n$stack');
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = e.toString();
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFF0D1B2A),
+    return Scaffold(
+      backgroundColor: const Color(0xFF0D1B2A),
       body: Center(
-        child: CircularProgressIndicator(color: Colors.white),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.health_and_safety,
+                  color: Color(0xFF42A5F5), size: 64),
+              const SizedBox(height: 24),
+              const Text(
+                'MediGemma Field',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 32),
+              if (!_hasError) ...[
+                const CircularProgressIndicator(color: Color(0xFF42A5F5)),
+                const SizedBox(height: 20),
+                Text(
+                  _status,
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Please keep the app open',
+                  style: TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ] else ...[
+                const Icon(Icons.error_outline,
+                    color: Color(0xFFE65100), size: 48),
+                const SizedBox(height: 12),
+                const Text(
+                  'Setup failed',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _errorMessage.length > 200
+                      ? '${_errorMessage.substring(0, 200)}…'
+                      : _errorMessage,
+                  style:
+                      const TextStyle(color: Colors.white60, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _hasError = false;
+                      _errorMessage = '';
+                      _status = 'Retrying…';
+                    });
+                    _runBootstrap();
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

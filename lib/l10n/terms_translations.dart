@@ -157,7 +157,7 @@ class TermsL10n {
     ok: 'OK',
     whyDownloadTitle: 'Why this one-time setup?',
     whyDownloadBody:
-        'We download Gemma 4 — Google\'s medical-capable AI — directly to your phone. '
+        'We download Gemma 4 — Google\'s AI model — directly to your phone. '
         'After this, the app works fully offline, your data never leaves the device, '
         'and you pay no data fees ever again.\n\n'
         'You only do this once.',
@@ -202,7 +202,7 @@ class TermsL10n {
     cancel: 'キャンセル',
     ok: 'OK',
     whyDownloadTitle: 'なぜ最初に準備が必要？',
-    whyDownloadBody: 'Google の医療対応 AI 「Gemma 4」 をこの端末に直接ダウンロードします。\n'
+    whyDownloadBody: 'Google の AI 「Gemma 4」 をこの端末に直接ダウンロードします。\n'
         'これが終われば、ネットなしで動き、データは端末の外に出ず、'
         '今後ずっと通信料はかかりません。\n\n'
         'この準備は一度だけです。',
@@ -247,7 +247,7 @@ class TermsL10n {
     ok: 'موافق',
     whyDownloadTitle: 'لماذا هذا الإعداد لمرة واحدة؟',
     whyDownloadBody:
-        'نقوم بتنزيل Gemma 4 — الذكاء الاصطناعي الطبي من Google — مباشرة إلى هاتفك. '
+        'نقوم بتنزيل Gemma 4 — نموذج الذكاء الاصطناعي من Google — مباشرة إلى هاتفك. '
         'بعد ذلك، يعمل التطبيق دون اتصال بالإنترنت تماماً، ولا تغادر بياناتك جهازك أبداً، '
         'ولن تدفع أي رسوم بيانات بعد ذلك.\n\n'
         'تقوم بهذا مرة واحدة فقط.',
@@ -291,7 +291,7 @@ class TermsL10n {
     ok: 'OK',
     whyDownloadTitle: '¿Por qué esta configuración única?',
     whyDownloadBody:
-        'Descargamos Gemma 4 — la IA médica de Google — directamente a su teléfono. '
+        'Descargamos Gemma 4 — el modelo de IA de Google — directamente a su teléfono. '
         'Después, la aplicación funciona totalmente sin conexión, sus datos nunca salen del dispositivo, '
         'y no pagará tarifas de datos nunca más.\n\n'
         'Solo lo hace una vez.',
@@ -340,7 +340,7 @@ class TermsL10n {
     ok: 'OK',
     whyDownloadTitle: 'Pourquoi cette configuration unique ?',
     whyDownloadBody:
-        'Nous téléchargeons Gemma 4 — l\'IA médicale de Google — directement sur votre téléphone. '
+        'Nous téléchargeons Gemma 4 — le modèle d\'IA de Google — directement sur votre téléphone. '
         'Ensuite, l\'application fonctionne entièrement hors ligne, vos données ne quittent jamais l\'appareil, '
         'et vous ne paierez plus jamais de frais de données.\n\n'
         'Vous ne le faites qu\'une seule fois.',
@@ -384,7 +384,7 @@ class TermsL10n {
     ok: 'OK',
     whyDownloadTitle: 'Por que esta configuração única?',
     whyDownloadBody:
-        'Baixamos o Gemma 4 — a IA médica do Google — diretamente para o seu telefone. '
+        'Baixamos o Gemma 4 — o modelo de IA do Google — diretamente para o seu telefone. '
         'Depois disso, o aplicativo funciona totalmente offline, seus dados nunca saem do dispositivo '
         'e você não pagará mais taxas de dados.\n\n'
         'Você só faz isso uma vez.',
@@ -430,7 +430,7 @@ class TermsL10n {
     ok: 'Sawa',
     whyDownloadTitle: 'Kwa nini usanidi huu wa mara moja?',
     whyDownloadBody:
-        'Tunapakua Gemma 4 — AI wa kimatibabu wa Google — moja kwa moja kwenye simu yako. '
+        'Tunapakua Gemma 4 — modeli ya AI ya Google — moja kwa moja kwenye simu yako. '
         'Baada ya hii, programu inafanya kazi bila intaneti kabisa, data yako haitoki kifaani, '
         'na hutalipa ada za data tena kabisa.\n\n'
         'Unafanya hii mara moja tu.',
@@ -474,7 +474,7 @@ class TermsL10n {
     ok: 'ठीक है',
     whyDownloadTitle: 'यह एक बार का सेटअप क्यों ज़रूरी है?',
     whyDownloadBody:
-        'हम Google के मेडिकल AI Gemma 4 को सीधे आपके फ़ोन पर डाउनलोड करते हैं। '
+        'हम Google के AI मॉडल Gemma 4 को सीधे आपके फ़ोन पर डाउनलोड करते हैं। '
         'इसके बाद, ऐप पूरी तरह ऑफ़लाइन काम करता है, आपका डेटा डिवाइस से बाहर नहीं जाता, '
         'और आप दोबारा कभी डेटा शुल्क नहीं देंगे।\n\n'
         'यह केवल एक बार करना है।',
@@ -516,7 +516,7 @@ class TermsL10n {
     ok: '确定',
     whyDownloadTitle: '为何需要这次设置？',
     whyDownloadBody:
-        '我们将 Google 的医疗 AI 模型 Gemma 4 直接下载到您的手机。'
+        '我们将 Google 的 AI 模型 Gemma 4 直接下载到您的手机。'
         '完成后，应用完全离线工作，您的数据不会离开设备，'
         '您将不再支付任何流量费。\n\n'
         '此设置仅需进行一次。',
@@ -561,7 +561,7 @@ class TermsL10n {
     ok: 'OK',
     whyDownloadTitle: 'Зачем эта однократная настройка?',
     whyDownloadBody:
-        'Мы загружаем Gemma 4 — медицинский ИИ от Google — прямо на ваш телефон. '
+        'Мы загружаем Gemma 4 — модель ИИ от Google — прямо на ваш телефон. '
         'После этого приложение работает полностью офлайн, ваши данные не покидают устройство, '
         'и вы больше никогда не платите за интернет-трафик.\n\n'
         'Это нужно сделать только один раз.',

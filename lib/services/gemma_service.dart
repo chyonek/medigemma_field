@@ -37,120 +37,152 @@ import 'model_service.dart';
 //  - 6th-grade reading level 指定
 const String _conversationalSystemInstruction = '''
 <ROLE>
-You are a WHO ETAT triage assistant for remote and low-resource settings (rural villages,
-refugee camps, conflict zones). Your users are non-medical: patients, family members, and
-community health workers. Write at a 6th-grade reading level — plain, friendly, never clinical.
+You are a WHO ETAT triage assistant for low-resource settings (villages, refugee camps,
+conflict zones). Users are non-medical (patients, family, community health workers).
+Write at a 6th-grade reading level — plain, friendly, never clinical.
 </ROLE>
 
 <EMERGENCY_SIGNS>
-If ANY are present, immediately respond TYPE: TRIAGE with LEVEL: 3:
+ANY of these → TYPE: TRIAGE LEVEL: 3 immediately:
 airway obstruction · severe breathing difficulty · shock · unconscious · convulsions ·
-severe bleeding · chest pain · stroke signs · snake bite · poisoning · severe dehydration · severe burns
+severe bleeding · chest pain · stroke signs · snake bite · poisoning · severe dehydration ·
+severe burns · suspected ectopic pregnancy (reproductive-age woman + abdominal/pelvic pain).
 </EMERGENCY_SIGNS>
 
-<MISSING_INFO_CHECK>
-Use OPQRST + demographics to decide what to ask next:
-Onset · Quality · Region · Severity (1-10) · Time/duration · Associated symptoms ·
-Age (under-5 = WHO IMCI lower threshold for Level 3; 65+ = HIGHER level when uncertain) ·
-Sex + pregnancy (MANDATORY for reproductive-age female with abdominal/pelvic/back pain or
-vaginal bleeding — consider ectopic pregnancy as Level 3).
-</MISSING_INFO_CHECK>
+<CORE_RULES priority="critical">
+Every turn, the user message contains TOPICS_ANSWERED and TOPICS_AVAILABLE blocks at the top.
+Read them FIRST. Then apply ALL four rules below.
 
-<FOLLOWUP_RULES>
-1. ONE QUESTION PER TURN. Never combine two questions with "and" or commas.
-2. DO NOT RE-ASK information already provided. Inspect the initial complaint AND every prior
-   Q&A. Common pre-filled fields: 部位/body region · 症状/symptom · 痛みの強さ/severity ·
-   いつから/duration · 年齢/age · 性別/sex · 妊娠/pregnancy.
-3. REFERENCE PRIOR ANSWERS — briefly acknowledge what the patient just said, then drill DEEPER.
-4. Accept vague answers; move on. Never rephrase the same question with synonyms.
-5. Pain quality → give choices (sharp/dull/burning/cramping). Size → everyday objects.
-</FOLLOWUP_RULES>
+R1. Pick ONE topic from TOPICS_AVAILABLE and ask about ONLY that topic.
+    NEVER ask about anything in TOPICS_ANSWERED.
+    NEVER combine 2 topics with や/、/and/or in one question.
 
-<INTAKE_FORM_RULE priority="critical">
-If the user message contains markers like 【記入済み問診票（再質問しないでください）】 or
-"PRE-FILLED INTAKE FORM", treat EVERY item inside as a CONFIRMED FACT. Do NOT re-ask any field
-listed there. Ask only about NEW information (associated symptoms, yes/no specifics, or
-elaborations on existing answers).
-</INTAKE_FORM_RULE>
+R2. If TOPICS_AVAILABLE is empty or you have enough info → output TYPE: TRIAGE now.
 
-<ICD11_GROUNDING>
-If the user message contains "ICD-11 reference matches", use those entries as medical context
-when generating questions AND when forming the final TRIAGE. Reference ICD-11 entry names in
-POSSIBLE_CONDITIONS when clinically appropriate.
-</ICD11_GROUNDING>
+R3. QUICK_REPLIES must be valid answers to THIS specific question:
+    - yes/no question → "はい | いいえ | わからない"
+    - severity (only if SEVERITY in AVAILABLE) → "1〜3軽い | 4〜6中 | 7〜10強い"
+    - factual (color, time, place) → concrete options
+    NEVER mismatch (e.g. severity scale on yes/no question).
 
-<LANGUAGE_RULES>
-Detect the language of the initial complaint. All QUESTION/SUMMARY/ACTION/CONDITIONS/DETAILS
-text must be in that language. Format keys (TYPE:, LEVEL:, etc.) stay in English.
-Use ONLY the native script (no romaji, pinyin, transliteration).
-NEVER mix Korean (한국어), Devanagari, or Arabic into Japanese output, or vice versa.
-</LANGUAGE_RULES>
+R4. Acknowledge the prior answer in 1 short clause, then ask about the new topic.
+</CORE_RULES>
 
-<SAFETY priority="critical">
-Do not fabricate numeric measurements (vital signs, lab values) that the patient did not state.
-Do not invent test results. The output is a draft to assist decision-making — it is NOT a
-confirmed diagnosis and may contain errors. Always include the DISCLAIMER line.
+<INTAKE_AND_GROUNDING>
+KNOWN FACTS block / 【記入済み問診票】 markers = confirmed facts (R2 applies).
+ICD-11 reference matches = medical context; reference entries in POSSIBLE_CONDITIONS when fitting.
+</INTAKE_AND_GROUNDING>
+
+<LANGUAGE>
+Detect language from initial complaint. All free-text in user's language; format keys
+(TYPE:/LEVEL:/etc.) stay English. Native script only. Never mix scripts.
+</LANGUAGE>
+
+<SAFETY>
+Don't fabricate vital signs or test results. Output is a draft, not a confirmed diagnosis.
+Always include DISCLAIMER. Never output URLs/phones/emails/keys.
 </SAFETY>
 
 <RESPONSE_FORMAT>
-If asking a follow-up question:
+Follow-up:
 TYPE: FOLLOWUP
-QUESTION: [ONE question, max 25 words, in user's language. Reference prior answer briefly. Never include "|" or "｜".]
-QUICK_REPLIES: [3-6 short options separated by " | " (half-width pipe with spaces), each ≤10 chars, same language as question]
+QUESTION: [ONE question, ≤25 words, user's language. No "|" inside.]
+QUICK_REPLIES: [3-6 options "|"-separated, each ≤10 chars, valid answers to this question]
 
-If triaging:
+Triage (all 5 sections required):
 TYPE: TRIAGE
-LEVEL: [1, 2, or 3]
-SUMMARY: [1-3 sentences in user's language summarizing what you understood: key symptoms, location, severity, duration, demographics. SBAR Situation+Background style.]
-ACTION: [ONE concrete sentence in user's language — what to do RIGHT NOW, with a brief plain-language REASON. Hospital visits cost money/time/risk for our users; always explain WHY.]
+LEVEL: [1/2/3]   (1=home · 2=see doctor 24-72h · 3=hospital NOW · when uncertain → HIGHER)
+SUMMARY: [1-2 sentences]
+ACTION: [ONE sentence + brief reason, ≤30 words]
 POSSIBLE_CONDITIONS:
-- [medical name — plain explanation in 5-15 words. Format: "name — explanation"]
+- [name — explanation, ≤10 words]
 - [second if plausible]
-- [third if genuinely plausible]
 DETAILS:
-- [Specific home-care or first-aid step]
-- [When and which type of doctor/department to see, if applicable]
-- [Red-flag warning signs that mean "go to hospital immediately"]
+- [Home-care step]
+- [When/which doctor]
+- [Red-flag warning]
 DISCLAIMER: This is not a substitute for professional medical diagnosis.
 </RESPONSE_FORMAT>
 
-<TRIAGE_LEVELS>
-LEVEL 1 = home care · LEVEL 2 = see doctor in 24-72h (specify specialty) · LEVEL 3 = hospital NOW (state what to tell the doctor).
-When uncertain, ALWAYS assign the HIGHER level.
-</TRIAGE_LEVELS>
-
-<EXAMPLE label="good_followup_referencing_prior_answer">
-Prior Q&A: "When did the throat pain start?" → "Since yesterday."
-Output:
+<EXAMPLE label="good_followup">
+Prior: "throat pain since yesterday" → Output:
 TYPE: FOLLOWUP
-QUESTION: 昨日から痛むとのこと。飲み込むときに特に痛みますか？
+QUESTION: 昨日から痛むとのこと。飲み込むとき特に痛みますか？
 QUICK_REPLIES: はい | いいえ | わからない
 </EXAMPLE>
 
-<EXAMPLE label="good_triage_with_reason_and_plain_explanation">
+<EXAMPLE label="good_triage">
 TYPE: TRIAGE
 LEVEL: 2
 SUMMARY: 30代女性、昨日から喉の痛みと微熱。嚥下時に痛みが強い。
-ACTION: 1〜2日以内に内科を受診してください。細菌感染の可能性があり、抗生剤が必要なことがあるためです。
+ACTION: 1〜2日以内に内科を受診してください。細菌感染の可能性があるためです。
 POSSIBLE_CONDITIONS:
-- 扁桃炎 — のどの奥の組織が腫れて痛む感染症
-- 咽頭炎 — のど全体が炎症で赤く腫れる状態
+- 扁桃炎 — のど奥の感染で腫れて痛む
+- 咽頭炎 — のど全体の炎症
 DETAILS:
-- 温かい飲み物・うがい・十分な休息で症状が和らぎます
-- 内科か耳鼻咽喉科を受診。発熱が3日以上続く場合は早めに
-- 急に呼吸が苦しい・首が大きく腫れる場合は今すぐ病院へ
+- 温かい飲み物・うがい・休息で和らぐ
+- 内科か耳鼻咽喉科。発熱3日以上で早めに
+- 呼吸困難・首が大きく腫れる場合は今すぐ病院へ
 DISCLAIMER: This is not a substitute for professional medical diagnosis.
 </EXAMPLE>
 
-<ANTI_EXAMPLE label="bad_combined_question_and_re-asking">
-BAD output: "QUESTION: いつから始まり、どんな感じですか？"
-WHY BAD: two questions combined; if intake form had 「いつから: 昨日」 this also re-asks.
-GOOD instead: "QUESTION: 昨日から痛むとのこと。鈍い痛みですか、鋭い痛みですか？"
+<ANTI_EXAMPLE label="compound_and_mismatched_replies">
+BAD: "痰の色や量はどうですか？" QUICK_REPLIES "1〜3 | 4〜6 | 7〜10"
+WHY: violates R1 (two topics) AND R3 (severity scale on factual question).
+GOOD this turn: "痰の色は何ですか？" QUICK_REPLIES "白 | 黄色 | 緑 | 茶色"
+</ANTI_EXAMPLE>
+
+<ANTI_EXAMPLE label="re-ask_after_negative_or_known">
+Q1 "他に症状ありますか?" A1 "ない" → BAD Q2 "他に何か感じますか?" (same topic, rephrased).
+KNOWN FACTS has "痛みの強さ: 5" → BAD "強さは?" — already known.
+GOOD: pick a NEW dimension. e.g. "飲み込むとき痛みますか？" QUICK_REPLIES "はい | いいえ | わからない"
 </ANTI_EXAMPLE>
 ''';
 
 // ─── ユーザー側プロンプト (動的・呼び出しごとに変わる) ──────────
 // 患者の主訴 + Q&A 履歴 + ICD grounding + 残質問数を user message に入れる。
+/// 質問が既に答えられた topic にあたるかをコードで判定するためのヒューリスティック。
+/// 日本語 / 英語両方の表現を見て、答えに「ない/なし/no/わからない」が含まれる場合も
+/// 「topic は closed (もう聞かない)」として扱う。
+const _topicCodes = {
+  'ONSET': ['いつから', '何時間前', '何日前', 'onset', 'when did', 'how long ago'],
+  'SEVERITY': ['痛みの強さ', '10段階', 'severity', 'how strong', 'how painful', 'scale of'],
+  'REGION': ['部位', '場所', 'region', 'where', 'which part'],
+  'CHIEF_SYMPTOM': ['症状:', 'symptom:'],
+  'AGE': ['年齢:', 'age:', '歳'],
+  'SEX': ['性別:', 'sex:'],
+  'PREGNANCY': ['妊娠', 'pregnan'],
+  'QUALITY': ['どんな感じ', 'どんな痛み', '鈍い', '鋭い', '焼ける', 'quality', 'sharp', 'dull', 'burning'],
+  'TRIGGERS': ['何で悪化', '悪化する', 'triggers', 'worse when'],
+  'RELIEF': ['楽になる', '和らぐ', 'relief', 'better when'],
+  'ASSOCIATED_FEVER': ['熱はあり', '発熱', 'fever'],
+  'ASSOCIATED_COUGH': ['咳', 'cough'],
+  'ASSOCIATED_NAUSEA': ['吐き気', '嘔吐', 'nausea', 'vomit'],
+  'ASSOCIATED_HEADACHE': ['頭痛', 'headache'],
+  'ASSOCIATED_BREATHING': ['呼吸', '息苦', 'breath'],
+  'ASSOCIATED_SWALLOWING': ['飲み込', '嚥下', 'swallow'],
+  'ASSOCIATED_OTHER_SYMPTOMS': ['他に症状', 'ほかに症状', '他に何か', 'other symptoms', 'anything else'],
+  'RED_FLAGS': ['緊急', 'red flag', 'emergency'],
+  'MEDICAL_HISTORY': ['既往', '持病', '過去の病気', 'history'],
+};
+
+/// 与えられたテキスト (intake form 文字列 or Q&A の Q/A) から「このテキストが
+/// 触れているトピックコード」を抽出する。否定回答 ("ない/なし/no/わからない")
+/// でも topic は CLOSED とする (R2 negative-answer rule)。
+Set<String> _extractTopicsFromText(String text) {
+  final lower = text.toLowerCase();
+  final hit = <String>{};
+  for (final entry in _topicCodes.entries) {
+    for (final keyword in entry.value) {
+      if (lower.contains(keyword.toLowerCase()) || text.contains(keyword)) {
+        hit.add(entry.key);
+        break;
+      }
+    }
+  }
+  return hit;
+}
+
 String _buildConversationalPrompt(
   String original,
   List<Map<String, String>> qaHistory,
@@ -160,12 +192,80 @@ String _buildConversationalPrompt(
   final questionsAsked = qaHistory.length;
   final remaining = maxQuestions - questionsAsked;
 
-  // Flutter perf: 文字列結合は + より StringBuffer / interpolation が速い。
+  // ★ 2026-05-12: 重複質問対策を強化。
+  //   問題: KNOWN FACTS block を冒頭に置いても、E2B は日本語 key と system rule
+  //   の英語 key (onset/severity 等) のマッピングが弱く、再質問が発生する。
+  //   対策: text から topic を heuristic で抽出し、「TOPICS_ANSWERED」「TOPICS_AVAILABLE」
+  //   を**英語コードで明示的に列挙**して user message 冒頭に置く。
+  //   これで model は english code list を見て「どの topic がまだ聞ける」を直接認識できる。
+
+  // 1) 答えられた topics を抽出 (questionnaire + すべての Q&A)
+  final answeredTopics = <String>{};
+  answeredTopics.addAll(_extractTopicsFromText(original));
+  for (final qa in qaHistory) {
+    answeredTopics.addAll(_extractTopicsFromText('${qa['q']} ${qa['a']}'));
+  }
+
+  // 2) Topic 名 ⇒ 簡潔な英語説明
+  const topicDescriptions = {
+    'QUALITY': 'pain quality (sharp/dull/burning/cramping)',
+    'TRIGGERS': 'what makes it worse',
+    'RELIEF': 'what makes it better',
+    'ASSOCIATED_FEVER': 'fever (yes/no)',
+    'ASSOCIATED_COUGH': 'cough (yes/no)',
+    'ASSOCIATED_NAUSEA': 'nausea/vomiting (yes/no)',
+    'ASSOCIATED_HEADACHE': 'headache (yes/no)',
+    'ASSOCIATED_BREATHING': 'breathing difficulty (yes/no)',
+    'ASSOCIATED_SWALLOWING': 'pain when swallowing (yes/no)',
+    'RED_FLAGS': 'red-flag signs (chest pain, severe weakness, blood)',
+    'MEDICAL_HISTORY': 'relevant medical history',
+    'ONSET': 'when symptom started',
+    'SEVERITY': 'pain severity 0-10',
+  };
+
+  // 3) Available topics = 全 topic - 答え済み
+  final allClinicalTopics = topicDescriptions.keys.toSet();
+  final availableTopics =
+      allClinicalTopics.difference(answeredTopics).toList()..sort();
+
+  // 4) 問診票の生 facts も補助情報として残す
+  String knownFactsBlock = '';
+  String chiefComplaintLine = original;
+  if (original.contains('【記入済み問診票（再質問しないでください）】') ||
+      original.contains('PRE-FILLED INTAKE FORM')) {
+    final cleaned = original
+        .replaceAll('【記入済み問診票（再質問しないでください）】', '')
+        .replaceAll('【上記以外で診断に必要な情報のみ質問してください】', '')
+        .replaceAll('PRE-FILLED INTAKE FORM', '')
+        .trim();
+    final facts = cleaned
+        .split(RegExp(r'[。\n]'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .map((s) => '- $s')
+        .join('\n');
+    knownFactsBlock = '\n━ INTAKE FORM (verbatim) ━\n$facts\n';
+    chiefComplaintLine = '(see INTAKE FORM and TOPICS below)';
+  }
+
+  // 5) TOPICS_ANSWERED と TOPICS_AVAILABLE を**冒頭**に置く (最重要)
+  final sortedAnswered = answeredTopics.toList()..sort();
+  final answeredBlock = sortedAnswered.isEmpty
+      ? '(none yet)'
+      : sortedAnswered.map((t) => '✗ $t').join('\n');
+  final availableBlock = availableTopics.isEmpty
+      ? '(all explored — produce TRIAGE now)'
+      : availableTopics.map((t) {
+          final desc = topicDescriptions[t] ?? t;
+          return '• $t — $desc';
+        }).join('\n');
+
+  // History block
   final String historyBlock;
   if (qaHistory.isEmpty) {
     historyBlock = '';
   } else {
-    final buf = StringBuffer('\n━ CONVERSATION SO FAR ━\n');
+    final buf = StringBuffer('\n━ Q&A HISTORY ━\n');
     for (var i = 0; i < qaHistory.length; i++) {
       final qa = qaHistory[i];
       buf
@@ -175,17 +275,22 @@ String _buildConversationalPrompt(
     historyBlock = buf.toString();
   }
 
-  // ICD-11 grounding ブロック (Layer 1)。空の場合は省略してプロンプト膨張回避。
   final icdBlock = icdContext.trim().isEmpty ? '' : '\n$icdContext\n';
 
   final decisionRule = remaining <= 0
-      ? 'DECISION: $maxQuestions questions reached. You MUST respond TYPE: TRIAGE now.'
-      : 'DECISION: Up to $remaining more question(s) allowed. If enough info → respond TYPE: TRIAGE now.';
+      ? 'DECISION: $maxQuestions questions reached. Respond TYPE: TRIAGE now.'
+      : 'DECISION: Up to $remaining more question(s). If enough info → respond TYPE: TRIAGE now. Otherwise pick ONE topic from TOPICS_AVAILABLE.';
 
   return '''
+━━━ TOPICS_ANSWERED (DO NOT ASK ABOUT THESE) ━━━
+$answeredBlock
+
+━━━ TOPICS_AVAILABLE (pick ONE per turn) ━━━
+$availableBlock
+
 ━ PATIENT ━
-Initial complaint: "$original"
-$historyBlock$icdBlock
+Initial complaint: $chiefComplaintLine
+$knownFactsBlock$historyBlock$icdBlock
 $decisionRule
 ''';
 }
@@ -464,11 +569,14 @@ class GemmaService {
   static const int _maxQuestions = 5;
 
   // Gemma 4 モデル設定
-  // flutter_gemma 公式推奨: <6GB RAM 端末では maxTokens を 2048 以下に抑える
-  // (Pixel 6a は 6GB ぴったり = ボーダー)。
-  // システムプロンプトを ~2300 → ~1100 token に圧縮したので 2048 で収まる。
-  // KV cache メモリ削減 → native OOM クラッシュ回避。
-  static const int _maxTokens = 2048;
+  // 2026-05-11 テスト: 2048 → 3072 に引き上げ。
+  // 詳細な system instruction (ANTI_EXAMPLE × 3 + verbose RESPONSE_FORMAT 等) を
+  // 復元したため 2048 を超過。Pixel 6a (6GB RAM) で +1024 token = +~130MB KV cache
+  // を許容できるかテストする。OOM が再発したら 2560 に下げて再試行する想定。
+  //
+  // 参考: flutter_gemma 公式推奨は <6GB 端末で 2048 以下。Pixel 6a は境界線で、
+  // 他アプリのメモリ圧力次第で low-memory-killer が発動するリスクあり。
+  static const int _maxTokens = 3072;
 
   // 永続化されたオフラインモデル（init は1回のみ・close するまで保持）
   // → 推論ごとの数十秒の初期化コストを回避
@@ -637,6 +745,27 @@ class GemmaService {
     required List<Map<String, String>> qaHistory,
     required String icdContext,
   }) {
+    // ★ Stage 1 と同じく KNOWN FACTS block を冒頭に明示。
+    String knownFactsBlock = '';
+    String chiefComplaintLine = original;
+    if (original.contains('【記入済み問診票（再質問しないでください）】') ||
+        original.contains('PRE-FILLED INTAKE FORM')) {
+      final cleaned = original
+          .replaceAll('【記入済み問診票（再質問しないでください）】', '')
+          .replaceAll('【上記以外で診断に必要な情報のみ質問してください】', '')
+          .replaceAll('PRE-FILLED INTAKE FORM', '')
+          .trim();
+      final facts = cleaned
+          .split(RegExp(r'[。\n]'))
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .map((s) => '- $s')
+          .join('\n');
+      knownFactsBlock =
+          '\n━ KNOWN FACTS (confirmed from intake form) ━\n$facts\n━━━━━━\n';
+      chiefComplaintLine = '(see KNOWN FACTS below)';
+    }
+
     // Flutter perf: + より StringBuffer。
     final String historyBlock;
     if (qaHistory.isEmpty) {
@@ -655,73 +784,63 @@ class GemmaService {
     // user message: 動的データ部のみ。ルールは _finalTriageSystemInstruction へ。
     return '''
 ━ PATIENT ━
-Initial complaint: "$original"
-$historyBlock$icdBlock''';
+Initial complaint: $chiefComplaintLine
+$knownFactsBlock$historyBlock$icdBlock''';
   }
 
-  // Stage 2 (Thinking / Layer 3) 用の system instruction.
-  // Vertex AI ベストプラクティス + MedLM 推奨に準拠して構造化。
+  // Stage 2 (Thinking / Layer 3) 用 system instruction (compact, focused).
   static const String _finalTriageSystemInstruction = '''
 <ROLE>
-You are providing the FINAL medical triage assessment for a non-medical user (patient,
-family member, or community health worker). Write at a 6th-grade reading level — plain,
-friendly, never clinical.
+You are giving the FINAL medical triage. Non-medical user, 6th-grade language, friendly.
 </ROLE>
 
-<REASONING_INSTRUCTION priority="critical">
-Solve the case in a step-by-step fashion BEFORE producing the final response:
-1. Summarize the available information (chief complaint, prior Q&A answers, ICD-11 matches).
-2. List the most plausible conditions you are considering.
-3. Identify any red-flag signs that would shift the level upward.
-4. Apply WHO ETAT levels and decide. When uncertain, ALWAYS assign the HIGHER level.
-This thinking happens internally; output only the RESPONSE_FORMAT below.
-</REASONING_INSTRUCTION>
+<REASONING>
+Think step-by-step internally before answering: 1) summarize chief complaint + Q&A + ICD
+matches, 2) list plausible conditions, 3) check red flags, 4) apply WHO ETAT.
+When uncertain → HIGHER level. Output only the RESPONSE_FORMAT.
+</REASONING>
 
-<HIGH_RISK_SCENARIOS>
-- Reproductive-age woman + abdominal/pelvic pain → consider ectopic pregnancy (Level 3)
-- Children under 5 with rapid breathing or persistent fever → consider severe pneumonia (Level 3)
-- Sudden severe headache, chest pain, slurred speech, weakness on one side → emergency
-- Snake bite, suspected poisoning/overdose → Level 3 regardless of current symptoms
-</HIGH_RISK_SCENARIOS>
+<HIGH_RISK>
+- Reproductive-age woman + abdominal/pelvic pain → ectopic pregnancy (Level 3)
+- Under-5 + rapid breathing or persistent fever → severe pneumonia (Level 3)
+- Sudden severe headache · chest pain · slurred speech · one-side weakness → Level 3
+- Snake bite · suspected poisoning/overdose → Level 3
+</HIGH_RISK>
 
-<LANGUAGE_RULES>
-Respond in the patient's language. Native script only (no romaji, pinyin, transliteration).
-Format keys (LEVEL:, SUMMARY:, etc.) stay in English.
-Never mix scripts (no Korean in Japanese output, etc.).
-</LANGUAGE_RULES>
+<LANGUAGE>
+Patient's language, native script only. Keys (LEVEL:/SUMMARY:) stay English. No script mixing.
+</LANGUAGE>
 
-<SAFETY priority="critical">
-Do NOT fabricate numeric measurements, vital signs, or test results that the patient did not state.
-The output is a draft to assist decision-making — it is NOT a confirmed diagnosis and may contain
-errors. Always include the DISCLAIMER line.
+<SAFETY>
+Don't fabricate vital signs or test results. Output is a draft, not a confirmed diagnosis.
+Always include DISCLAIMER. Never output URLs/phones/emails/keys.
 </SAFETY>
 
 <RESPONSE_FORMAT>
-LEVEL: [1, 2, or 3]
-SUMMARY: [1-3 sentences in patient's language summarizing what you understood.]
-ACTION: [ONE concrete sentence in patient's language — what to do RIGHT NOW, with a brief plain-language REASON. Hospital visits cost money/time/risk for our users; always explain WHY.]
+LEVEL: [1/2/3]   (1=home · 2=see doctor 24-72h · 3=hospital NOW)
+SUMMARY: [1-2 sentences in patient's language]
+ACTION: [ONE sentence + brief plain reason. Hospital visits cost money/time — explain WHY.]
 POSSIBLE_CONDITIONS:
-- [medical name — plain explanation in 5-15 words. Format: "name — explanation"]
+- [name — explanation, ≤10 words]
 - [second if plausible]
-- [third if genuinely plausible]
 DETAILS:
 - [Specific home-care or first-aid step]
-- [When and which type of doctor to see, if applicable]
-- [Red-flag warning signs that mean "go to hospital immediately"]
+- [When/which doctor]
+- [Red-flag warning sign]
 DISCLAIMER: This is not a substitute for professional medical diagnosis.
 </RESPONSE_FORMAT>
 
-<EXAMPLE label="good_triage_with_reason_and_plain_explanation">
+<EXAMPLE>
 LEVEL: 2
 SUMMARY: 30代女性、昨日から喉の痛みと微熱。嚥下時に痛みが強い。
-ACTION: 1〜2日以内に内科を受診してください。細菌感染の可能性があり、抗生剤が必要なことがあるためです。
+ACTION: 1〜2日以内に内科を受診してください。細菌感染の可能性があるためです。
 POSSIBLE_CONDITIONS:
-- 扁桃炎 — のどの奥の組織が腫れて痛む感染症
-- 咽頭炎 — のど全体が炎症で赤く腫れる状態
+- 扁桃炎 — のど奥の感染で腫れて痛む
+- 咽頭炎 — のど全体の炎症
 DETAILS:
-- 温かい飲み物・うがい・十分な休息で症状が和らぎます
-- 内科か耳鼻咽喉科を受診。発熱が3日以上続く場合は早めに
-- 急に呼吸が苦しい・首が大きく腫れる場合は今すぐ病院へ
+- 温かい飲み物・うがい・休息で和らぐ
+- 内科か耳鼻咽喉科。発熱3日以上で早めに
+- 呼吸困難・首が大きく腫れる場合は今すぐ病院へ
 DISCLAIMER: This is not a substitute for professional medical diagnosis.
 </EXAMPLE>
 ''';
@@ -1363,6 +1482,16 @@ Apply the same response format. Include visual findings in SUMMARY.
       details = _stripRomaji(details);
     }
 
+    // ★ Output Sanitizer (OWASP Principle #5 Output Monitoring & Moderation)
+    //   LLM 応答に URL / 電話番号 / メールアドレス / API key 風文字列が
+    //   混入していたら除去する。プロンプトインジェクションで攻撃者が
+    //   "tinyurl.com/..." 等を出力させて誘導するシナリオへの最終防衛線。
+    //   医療トリアージ応答にこれらは本来不要なので無条件に除去して安全。
+    summary = _sanitizeOutput(summary);
+    action = _sanitizeOutput(action);
+    possibleConditions = _sanitizeOutput(possibleConditions);
+    details = _sanitizeOutput(details);
+
     return TriageResult(
       level: level,
       summary: summary,
@@ -1372,5 +1501,46 @@ Apply the same response format. Include visual findings in SUMMARY.
       rawResponse: text,
       languageCode: langCode,
     );
+  }
+
+  /// 出力サニタイザー — LLM 応答に紛れた識別子を除去する。
+  ///
+  /// 除去対象（医療トリアージ応答には本来現れないもの）:
+  ///  - URL (http/https/ftp/ftps/www.)
+  ///  - メールアドレス
+  ///  - 国際電話番号 (E.164 風: +XX で始まる 7-15 桁)
+  ///  - API key 風プレフィックス: sk-, hf_, AIzaSy, ghp_, gho_, glpat-, xoxb-
+  ///  - 32 文字以上連続する hex / base64 風文字列
+  ///
+  /// 残すもの: 日本語・英語平文・ICD-11 コード (短く ASCII)・痛みスケール数値等。
+  /// ICD-11 コードは "1A00.0" 等で URL 形式と異なるので誤爆しない。
+  static String _sanitizeOutput(String text) {
+    if (text.isEmpty) return text;
+    var t = text;
+    // URL (with optional scheme)
+    t = t.replaceAll(
+        RegExp(r'\b(?:https?|ftps?)://[^\s<>"]+', caseSensitive: false), '');
+    t = t.replaceAll(
+        RegExp(r'\bwww\.[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}(?:/[^\s<>"]*)?',
+            caseSensitive: false),
+        '');
+    // メール
+    t = t.replaceAll(
+        RegExp(r'\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b'), '');
+    // 国際電話 +XX-XXX-...
+    t = t.replaceAll(
+        RegExp(r'\+\d{1,3}[\s\-]?\d{2,4}[\s\-]?\d{2,4}[\s\-]?\d{2,9}\b'), '');
+    // API key プレフィックス系
+    t = t.replaceAll(
+        RegExp(
+            r'\b(?:sk-|hf_|AIzaSy|ghp_|gho_|glpat-|xoxb-|xoxp-|AKIA)[A-Za-z0-9_\-]{16,}\b'),
+        '');
+    // 32 文字以上の hex / base64 風 (API key / token のヒューリスティック)
+    t = t.replaceAll(RegExp(r'\b[A-Fa-f0-9]{32,}\b'), '');
+    t = t.replaceAll(
+        RegExp(r'\b[A-Za-z0-9+/]{40,}={0,2}\b'), '');
+    // 連続スペースを 1 つに圧縮 (除去後の見た目を整える)
+    t = t.replaceAll(RegExp(r' {2,}'), ' ');
+    return t.trim();
   }
 }

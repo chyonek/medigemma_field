@@ -52,7 +52,10 @@ class _ConversationScreenState extends State<ConversationScreen>
   bool _speechAvailable = false;
 
   // 状態
-  _Stage _stage = _Stage.initialChoice;
+  // 初期画面は廃止：開いた瞬間からテキスト入力可（🎤 ボタンで音声に切替）。
+  // 「対話を始めるには…」のメニューは認知負荷を増やすだけで、入力手段は
+  // ターン単位で切り替わるので最初に選ばせる必要がない。
+  _Stage _stage = _Stage.textInput;
   _InputMode _followUpMode = _InputMode.text;
 
   // TTS 自動読み上げの有効/無効
@@ -167,7 +170,8 @@ class _ConversationScreenState extends State<ConversationScreen>
   void _handleInitialVoiceRecorded() {
     if (_stage != _Stage.voiceListening) return;
     if (_voiceTranscribed.isEmpty) {
-      setState(() => _stage = _Stage.initialChoice);
+      // 何も録音できなかったらテキスト入力に戻す（initialChoice 画面は廃止）
+      setState(() => _stage = _Stage.textInput);
       return;
     }
     _submitInitial(_voiceTranscribed);
@@ -182,14 +186,28 @@ class _ConversationScreenState extends State<ConversationScreen>
 
   // ─── 初期送信（共通） ────────────────────────────────────
   Future<void> _submitInitial(String text) async {
-    _originalInput = text;
+    _originalInput = text; // AI 送信用 (markers 含む完全な version)
+    final displayText = _stripInternalMarkers(text); // user に見せる用
     setState(() {
-      _messages.add(_Message(text: text, isUser: true));
+      _messages.add(_Message(text: displayText, isUser: true));
       _stage = _Stage.analyzing;
       _initialTextCtrl.clear();
     });
     _scrollToBottom();
     await _runNextStep();
+  }
+
+  /// 問診票が AI に渡す内部マーカーをユーザー表示から除去する。
+  /// 「【記入済み問診票（再質問しないでください）】」のような prompt-engineering
+  /// 文字列が user の最初のメッセージとしてチャットに表示される問題への対策。
+  /// AI に送る `_originalInput` には markers を残し、表示だけ綺麗にする。
+  String _stripInternalMarkers(String text) {
+    return text
+        .replaceAll('【記入済み問診票（再質問しないでください）】', '')
+        .replaceAll('【上記以外で診断に必要な情報のみ質問してください】', '')
+        .replaceAll('PRE-FILLED INTAKE FORM', '')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
   }
 
   // 3 段階ローディング：Stage 1 (analyzing) → Stage 2a (searching ICD-11) → Stage 2b (thinking)
@@ -711,9 +729,21 @@ class _ConversationScreenState extends State<ConversationScreen>
 
   // ─── 会話エリア ───────────────────────────────────────────
   Widget _buildConversationArea() {
+    // ★ キーボード表示時に最新メッセージ・クイック返信が隠れる問題への対策。
+    //   ListView の下部 padding にキーボード分 + クイック返信 chips 分の余白を追加。
+    //   Scaffold の resizeToAvoidBottomInset と組み合わせて、入力欄と
+    //   クイック返信は viewInsets により上に押し上げられる。ListView 側は
+    //   その押し上げ分を「余白」として吸収して最新メッセージを見せる。
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final hasQuickReplies = _quickReplies != null &&
+        _quickReplies!.isNotEmpty &&
+        (_stage == _Stage.followUpInput || _stage == _Stage.followUpVoice);
+    final extraBottomPadding =
+        (bottomInset > 0 ? 8.0 : 0.0) + (hasQuickReplies ? 80.0 : 0.0);
+
     final content = ListView.builder(
       controller: _scrollCtrl,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + extraBottomPadding),
       itemCount: _messages.length + (_stage == _Stage.analyzing ? 1 : 0),
       itemBuilder: (_, i) {
         if (i == _messages.length) return const _TypingBubble();
@@ -1200,7 +1230,7 @@ class _ConversationScreenState extends State<ConversationScreen>
 // ─── メッセージバブル ──────────────────────────────────────
 class _MessageBubble extends StatefulWidget {
   final _Message message;
-  const _MessageBubble({required this.message});
+  const _MessageBubble({super.key, required this.message});
 
   @override
   State<_MessageBubble> createState() => _MessageBubbleState();
