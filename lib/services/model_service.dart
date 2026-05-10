@@ -64,8 +64,31 @@ class ModelInfo {
 class ModelService {
   /// モデルがダウンロード済みか
   /// 0.15.0: FlutterGemma.hasActiveModel() で active inference model 有無を判定
+  ///
+  /// ⚠️ アプリ再起動時、ファイルは存在するが active 状態が消えていることがある。
+  /// その場合 `isModelInstalled()` で disk 上のファイル存在を確認し、
+  /// 自動的に再 activate (installModel = no-op + setActive) する。
+  /// → 再起動時に DL 画面に戻る UX 不具合を防ぐ。
   static Future<bool> isModelDownloaded() async {
-    return FlutterGemma.hasActiveModel();
+    if (FlutterGemma.hasActiveModel()) return true;
+
+    // active で無いが、ファイルが install 済みなら再 activate を試みる
+    try {
+      final installed = await FlutterGemma.isModelInstalled(_modelFilename);
+      if (!installed) return false;
+
+      debugPrint(
+          '[ModelService] Model file exists but inactive — re-activating...');
+      await FlutterGemma.installModel(
+        modelType: ModelType.gemma4,
+        fileType: ModelFileType.litertlm,
+      ).fromNetwork(_modelUrl).install();
+      debugPrint('[ModelService] Re-activation complete');
+      return FlutterGemma.hasActiveModel();
+    } catch (e) {
+      debugPrint('[ModelService] Re-activation failed: $e');
+      return false;
+    }
   }
 
   /// HuggingFace のサーバー側ファイルサイズを HEAD リクエストで取得（バイト単位）

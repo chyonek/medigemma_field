@@ -52,9 +52,9 @@ class TranslationService extends ChangeNotifier {
   // 翻訳済みのキー数（PostDownloadSetupScreen の進捗表示用）
   int get translatedCount => _translations.length;
 
-  // v3: home_questionnaire を 'medical intake form' に・duration_now を改善
-  //     → 旧キャッシュで「アンケート」「いまから」誤訳が残っていたため
-  static const _cacheKeyPrefix = 'ui_translations_v3_';
+  // v4: result_details_header を 'Care instructions' に変更 + triage 言い換え
+  //     → 既存ユーザーのキャッシュには古い「詳細」「トリアージ」が残るため bump
+  static const _cacheKeyPrefix = 'ui_translations_v4_';
   static const _localeOverrideKey = 'ui_locale_override';
 
   // ─── マスター UI 文字列（英語・このアプリで唯一の "ハードコード"） ──
@@ -170,7 +170,7 @@ class TranslationService extends ChangeNotifier {
     'result_conditions_dx_label': 'Differential diagnosis',
     'result_conditions_disclaimer':
         'These are possibilities, not a confirmed diagnosis.',
-    'result_details_header': 'Details',
+    'result_details_header': 'Care instructions',
     'result_disclaimer':
         'This is not a substitute for professional medical diagnosis.',
     'result_long_press_hint': 'Long-press to select & copy',
@@ -197,7 +197,8 @@ class TranslationService extends ChangeNotifier {
     // セクションヒント
     'q_section_who_hint': 'Affects pediatric / pregnancy assessment',
     'q_section_about_hint': 'Optional · Age, sex, pregnancy',
-    'q_section_where_hint': 'Tap on the body, or use chips below',
+    'q_section_where_hint':
+        'Tap the body or chips below — both pick the same part. Tap again to deselect.',
     'q_section_what_hint': 'Tap all that apply',
     'q_section_how_bad_hint': 'Optional · 0 means not specified',
     'q_section_when_hint': 'Optional',

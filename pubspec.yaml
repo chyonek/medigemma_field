@@ -60,8 +60,12 @@ flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/icon/app_icon.png"
-  adaptive_icon_background: "#FFFBF0"  # cream — 画像の背景と整合
-  adaptive_icon_foreground: "assets/icon/app_icon_fg.png"
+  # ★ アダプティブアイコンは foreground (透明 PNG) + background (色) の合成。
+  #   旧設定では fg = app_icon_fg.png (透明背景の手アイコン) → ランチャー表示で
+  #   「透明 PNG が見える」UX 不具合 (Pixel ランチャーは fg を中央に小さく表示するため)。
+  #   修正: fg にも cream 背景込みの app_icon.png を使い、bg と blend させる。
+  adaptive_icon_background: "#FFFBF0"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
   adaptive_icon_foreground_inset: 16   # 円マスク時の安全マージン (px)
   min_sdk_android: 21
   remove_alpha_ios: true

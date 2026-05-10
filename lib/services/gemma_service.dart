@@ -41,13 +41,23 @@ Onset · Quality · Region · Severity (1-10) · Time/duration · Associated sym
 Age (child/adult/elderly affects level) · Sex+pregnancy (mandatory for repro-age female with
 abdominal/pelvic/back pain or vaginal bleeding — consider ectopic pregnancy)
 
-━ FOLLOW-UP RULES ━
+━ FOLLOW-UP RULES — STRICT ━
+• ★ ONE QUESTION PER TURN. Never combine two questions with "and" or commas.
+   BAD:  "When did it start, and what does it feel like?"
+   BAD:  "いつから始まり、どんな感じですか？"
+   GOOD: "When did it start?"  (then ask quality next turn)
+   GOOD: "いつから始まりましたか？"
+• ★ DO NOT RE-ASK information already provided. Check both the initial complaint AND every
+   prior Q&A in CONVERSATION SO FAR. Confirmed fields commonly include:
+   部位/body region · 症状/symptom type · 痛みの強さ/severity (1-10) · いつから/duration ·
+   年齢/age · 性別/sex · 妊娠/pregnancy · 部位の補足 · 症状の補足 · 痛みの感じ
+• ★ REFERENCE PRIOR ANSWERS. When asking the next question, briefly acknowledge what the patient
+   just said, then drill DEEPER. Examples:
+     User said "昨日から痛い" → Next: "昨日から痛いとのこと。一番ひどかったのはいつですか？"
+     User said "sharp pain"  → Next: "You described it as sharp. Does it come and go, or constant?"
 • Accept vague answers and move on; never rephrase the same question.
-• Do NOT re-ask info already in the initial complaint or earlier answers.
-• Build on the previous answer; reference a specific symptom mentioned.
 • Use plain, friendly language. No medical jargon.
-• Pain severity: scale 1-10 with anchors. Pain quality: give choices (sharp/dull/burning/cramping).
-• Size: everyday objects (rice grain / bean / pea). Time: common timeframes (minutes/hours/today/yesterday/days/week+).
+• Pain quality: give choices (sharp/dull/burning/cramping). Size: everyday objects (rice/bean/pea).
 
 ━ DEMOGRAPHICS ━
 <5 years (WHO IMCI): lower threshold for Level 3. ≥65: atypical presentations → HIGHER level.
@@ -60,31 +70,50 @@ NEVER mix Korean (한국어) into Japanese output, or any other language script 
 
 ━ INTAKE FORM INPUT — CRITICAL ━
 If the initial complaint is wrapped with markers like 【記入済み問診票（再質問しないでください）】 or
-"PRE-FILLED INTAKE FORM" or similar, treat ALL items inside as CONFIRMED facts.
-Do NOT ask about: body region, symptom type, pain severity (1-10), duration/onset,
-age, sex, pregnancy status — if they are listed in the form.
-Ask ONLY about NEW information not in the form (e.g. associated symptoms, fever yes/no, swallowing pain, etc.).
+"PRE-FILLED INTAKE FORM" or similar, treat EVERY item inside as a CONFIRMED FACT.
+Do NOT ask about: body region (部位), symptom type (症状), pain severity (痛みの強さ/1-10),
+duration/onset (いつから), age (年齢), sex (性別), pregnancy (妊娠) — if listed in the form.
+Ask ONLY about NEW information not in the form, such as: associated symptoms (発熱/吐き気/咳/etc.),
+yes/no specific symptoms (飲み込みづらいか・呼吸が苦しいか), or asking the patient to elaborate
+on an existing answer.
+
+━ ICD-11 GROUNDING ━
+If "ICD-11 reference matches" are provided in the user message, use them as medical context for
+both QUESTION generation and final TRIAGE. Reference ICD entry names in POSSIBLE_CONDITIONS when
+they are clinically appropriate.
 
 ━ RESPONSE FORMAT ━
 
 If asking follow-up:
 TYPE: FOLLOWUP
-QUESTION: [ONE single question, max 25 words, user's language. Never repeat the same question. Never include "|" or "｜" inside the question.]
-QUICK_REPLIES: [3-6 short options separated by " | " (single half-width pipe with spaces), each ≤10 chars, in the SAME LANGUAGE as the question — use yes/no/unknown ONLY for yes-no questions]
+QUESTION: [ONE single question, max 25 words, in user's language. Reference prior answer if any.
+  Never combine two questions. Never include "|" or "｜" inside the question text.]
+QUICK_REPLIES: [3-6 short options separated by " | " (half-width pipe with spaces), each ≤10 chars,
+  in the SAME LANGUAGE as the question — use yes/no/unknown ONLY for yes-no questions]
 
 If triaging:
 TYPE: TRIAGE
 LEVEL: [1, 2, or 3]
-SUMMARY: [SBAR Situation+Background, 1-3 sentences user's language, include key symptoms+location+severity+duration+demographics]
-ACTION: [one concrete sentence, user's language, what to do RIGHT NOW]
+SUMMARY: [1-3 sentences in user's language. State what the AI understood: key symptoms, location,
+  severity, duration, demographic factors. SBAR Situation+Background style.]
+ACTION: [ONE concrete sentence in user's language — what to do RIGHT NOW.
+  ★ Always include a brief plain-language REASON (after a comma or because-clause).
+  Examples:
+    Level 3 EN: "Go to the hospital immediately, because the breathing difficulty may be life-threatening."
+    Level 3 JA: "今すぐ病院へ。呼吸が苦しい状態は命に関わる可能性があるためです。"
+    Level 1 EN: "Rest and drink fluids at home — symptoms suggest a mild self-limiting illness."
+    Level 1 JA: "家で休んで水分を取ってください。症状は軽く、自然に治ることが多いためです。"]
 POSSIBLE_CONDITIONS:
-- [most likely + brief reason, max 15 words]
-- [second if plausible]
-- [third if plausible]
+- [Medical name — plain explanation in 5-15 words. Format: "name — explanation"]
+  Examples:
+    EN: "Tonsillitis — infection of the tissue at the back of the throat"
+    JA: "扁桃炎 — のどの奥の組織が腫れて痛む感染症"
+- [second possibility, same format, if applicable]
+- [third possibility, same format, only if genuinely plausible]
 DETAILS:
-- [home care or first-aid step]
-- [when/which doctor to see if applicable]
-- [red-flag deterioration signs]
+- [Specific home-care or first-aid step (action-oriented)]
+- [When and which type of doctor/department to see, if applicable]
+- [Red-flag warning signs that mean "go to hospital immediately"]
 DISCLAIMER: This is not a substitute for professional medical diagnosis.
 
 ━ TRIAGE LEVELS (WHO ETAT) ━
@@ -93,17 +122,17 @@ When uncertain, assign the HIGHER level.
 ''';
 
 // ─── ユーザー側プロンプト (動的・呼び出しごとに変わる) ──────────
-// 患者の主訴 + Q&A 履歴 + 残質問数だけを user message に入れる。
+// 患者の主訴 + Q&A 履歴 + ICD grounding + 残質問数を user message に入れる。
 String _buildConversationalPrompt(
   String original,
   List<Map<String, String>> qaHistory,
   int maxQuestions,
+  String icdContext, // Layer 1 grounding (常時注入・空なら省略)
 ) {
   final questionsAsked = qaHistory.length;
   final remaining = maxQuestions - questionsAsked;
 
   // Flutter perf: 文字列結合は + より StringBuffer / interpolation が速い。
-  // ループ中の + は毎回 String を再生成してアロケーションを増やす。
   final String historyBlock;
   if (qaHistory.isEmpty) {
     historyBlock = '';
@@ -118,6 +147,9 @@ String _buildConversationalPrompt(
     historyBlock = buf.toString();
   }
 
+  // ICD-11 grounding ブロック (Layer 1)。空の場合は省略してプロンプト膨張回避。
+  final icdBlock = icdContext.trim().isEmpty ? '' : '\n$icdContext\n';
+
   final decisionRule = remaining <= 0
       ? 'DECISION: $maxQuestions questions reached. You MUST respond TYPE: TRIAGE now.'
       : 'DECISION: Up to $remaining more question(s) allowed. If enough info → respond TYPE: TRIAGE now.';
@@ -125,7 +157,7 @@ String _buildConversationalPrompt(
   return '''
 ━ PATIENT ━
 Initial complaint: "$original"
-$historyBlock
+$historyBlock$icdBlock
 $decisionRule
 ''';
 }
@@ -436,11 +468,19 @@ class GemmaService {
     final forceTriageNow = qaHistory.length >= _maxQuestions;
 
     try {
-      // ── Stage 1: Standard mode（高速・10 秒前後） ──
+      // ── Layer 1: ICD-11 grounding (always, ~ms, no inference cost) ──
+      // 「progressive enrichment」アーキテクチャ: 安い Layer 1 で常に grounding し、
+      // Stage 1 (Layer 2) も Stage 2 (Layer 3) も同じ ICD コンテキストを使う。
+      // 旧設計では Layer 1 が Stage 2 fallback でしか使われず、Stage 1 で完結する
+      // 大半のユーザーが ICD grounding の恩恵を受けられなかった。
+      onStageProgress?.call('searching_icd11');
+      final icdContext = _lookupIcdContext(original, qaHistory);
+
+      // ── Stage 1 (Layer 2): Standard mode (always runs, ~10-15 s) ──
       onStageProgress?.call('analyzing');
-      debugPrint('[GemmaService.analyzeNext] Stage 1: standard mode');
+      debugPrint('[GemmaService.analyzeNext] Layer 2: Standard mode (with ICD grounding)');
       final raw = await _callOffline(
-        _buildConversationalPrompt(original, qaHistory, _maxQuestions),
+        _buildConversationalPrompt(original, qaHistory, _maxQuestions, icdContext),
         isThinking: false,
         systemInstruction: _conversationalSystemInstruction,
       );
@@ -457,29 +497,26 @@ class GemmaService {
       }
 
       // Stage 1 が有効な TRIAGE を返した場合：Stage 2 (Thinking) を**スキップ**。
-      // 理由: 0.14.5 では GPU sampler 不在で CPU fallback → Stage 2 thinking が
-      // +80〜120 秒かかり 3 分超え。0.15.0 + MTP で改善見込みだが、Stage 1 で
-      // 十分な精度が出ているなら不要な追加レイテンシを避ける設計判断。
-      // 問診情報が不十分なら _parseResponse の action が空になるので Stage 2 へフォールバック。
+      // ICD grounding が既に効いているので Stage 1 の品質も従来より高い。
       final stage1Parsed = _parseResponse(raw, langCode);
       if (stage1Parsed.action.trim().isNotEmpty) {
         debugPrint(
-            '[GemmaService.analyzeNext] Stage 1 produced valid TRIAGE — skipping Stage 2 for speed');
+            '[GemmaService.analyzeNext] Stage 1 produced valid TRIAGE (ICD-grounded) — skipping Layer 3');
         return TriageStep.done(stage1Parsed);
       }
 
-      // ── Stage 2: ICD-11 + Thinking mode（高精度・~80 秒） ──
-      // Stage 1 が解析失敗 or action が空の場合のフォールバックのみ実行
-      // ⚠️ flutter_gemma 0.14.x のセッション再作成 SIGSEGV 回避のため delay
-      // (0.15.0 で改善済みかは未検証 — 念のため defensive code として残す)
+      // ── Stage 2 (Layer 3): Thinking mode (only on escalation, ~80 s) ──
+      // Stage 1 が解析失敗 / action 空の場合のフォールバック。
+      // 同じ icdContext を再利用 (再ルックアップ不要)。
       await Future.delayed(const Duration(milliseconds: 800));
       debugPrint(
-          '[GemmaService.analyzeNext] Stage 2 (fallback): ICD-11 + thinking');
+          '[GemmaService.analyzeNext] Layer 3: Thinking mode (escalation)');
       final finalResult = await _generateFinalTriage(
         original: original,
         qaHistory: qaHistory,
         langCode: langCode,
         stage1Result: stage1Parsed,
+        icdContext: icdContext,
         onStageProgress: onStageProgress,
         imageBytes: null,
       );
@@ -492,7 +529,27 @@ class GemmaService {
     }
   }
 
-  /// Stage 2: ICD-11 ルックアップ + Thinking モードで最終トリアージを生成
+  /// Layer 1: ICD-11 keyword search の結果を Stage 1 / Stage 2 共通プロンプト用
+  /// テキストに整形する。失敗しても空文字を返す (推論続行)。
+  static String _lookupIcdContext(
+      String original, List<Map<String, String>> qaHistory) {
+    final fullConversation = StringBuffer(original)..write(' ');
+    for (final qa in qaHistory) {
+      fullConversation.write('${qa['q'] ?? ''} ${qa['a'] ?? ''} ');
+    }
+    try {
+      final matches = IcdService.instance
+          .lookup(fullConversation.toString(), maxResults: 5);
+      debugPrint('[Layer 1] ICD-11 matches: ${matches.length} entries');
+      return IcdService.instance.buildPromptContext(matches);
+    } catch (e) {
+      debugPrint('[Layer 1] ICD-11 lookup failed (continuing): $e');
+      return '';
+    }
+  }
+
+  /// Layer 3 (Stage 2): Thinking モードで最終トリアージを生成。
+  /// ICD コンテキストは _lookupIcdContext で事前計算済み (Layer 1 で 1 回だけ実行)。
   ///
   /// 失敗した場合は [stage1Result]（Standard モードの結果）にフォールバック、
   /// それも空なら _buildFallbackResult で安全側の結果を返す。
@@ -502,29 +559,10 @@ class GemmaService {
     required String langCode,
     required TriageResult stage1Result,
     required Uint8List? imageBytes,
+    required String icdContext, // Layer 1 で precompute 済み
     void Function(String stageMessage)? onStageProgress,
   }) async {
-    // 全会話を 1 つのテキストに連結（ICD-11 検索キー用）。
-    // Flutter perf: + より interpolation/StringBuffer。
-    final fullConversation = StringBuffer(original)..write(' ');
-    for (final qa in qaHistory) {
-      fullConversation.write('${qa['q'] ?? ''} ${qa['a'] ?? ''} ');
-    }
-
-    // ICD-11 ルックアップ（失敗してもクリティカルでない・空配列で続行）
-    onStageProgress?.call('searching_icd11');
-    List<IcdMatch> icdMatches = const [];
-    try {
-      icdMatches =
-          IcdService.instance.lookup(fullConversation.toString(), maxResults: 5);
-      debugPrint(
-          '[GemmaService] ICD-11 matches: ${icdMatches.length} entries');
-    } catch (e) {
-      debugPrint('[GemmaService] ICD-11 lookup failed (continuing): $e');
-    }
-    final icdContext = IcdService.instance.buildPromptContext(icdMatches);
-
-    // Thinking モード用プロンプト構築
+    // Thinking モード用プロンプト構築 (icdContext は引数で受領 — 再 lookup しない)
     final thinkingPrompt = _buildFinalTriagePrompt(
       original: original,
       qaHistory: qaHistory,
@@ -609,15 +647,22 @@ You are providing the FINAL medical triage assessment. Use careful step-by-step 
 ━ RESPONSE FORMAT (EXACTLY) ━
 LEVEL: [1, 2, or 3]
 SUMMARY: [1-3 sentences in patient's language: key symptoms, location, severity, duration, demographic factors.]
-ACTION: [One concrete sentence in patient's language — what to do RIGHT NOW.]
+ACTION: [ONE concrete sentence in patient's language — what to do RIGHT NOW.
+  ★ Always include a brief plain-language REASON (after a comma or because-clause).
+  Hospital visits cost money, time, and risk for our users — they need to know WHY.
+  Examples:
+    Level 3: "今すぐ病院へ。呼吸が苦しい状態は命に関わる可能性があるためです。"
+    Level 1: "家で休んで水分を取ってください。症状は軽く、自然に治ることが多いためです。"]
 POSSIBLE_CONDITIONS:
-- [Most likely condition (use ICD-11 reference name if applicable). Max 15 words.]
-- [Second possibility if applicable]
-- [Third possibility max]
+- [Medical name — plain explanation in 5-15 words. Format: "name — explanation"
+  Examples: "扁桃炎 — のどの奥の組織が腫れて痛む感染症"
+            "Tonsillitis — infection of the tissue at the back of the throat"]
+- [Second possibility, same format]
+- [Third possibility, same format]
 DETAILS:
-- [Specific home care or first-aid steps]
-- [When and which type of doctor to see if applicable]
-- [Red-flag warning signs to watch for]
+- [Specific home-care or first-aid step (action-oriented)]
+- [When and which type of doctor to see, if applicable]
+- [Red-flag warning signs that mean "go to hospital immediately"]
 DISCLAIMER: This is not a substitute for professional medical diagnosis.
 ''';
 
@@ -739,10 +784,14 @@ DISCLAIMER: This is not a substitute for professional medical diagnosis.
     final langCode = _detectLanguageCode(original);
 
     try {
-      // ── Stage 1: Standard mode + 画像 ──
+      // Layer 1: ICD-11 grounding (always-first・progressive enrichment)
+      onStageProgress?.call('searching_icd11');
+      final icdContext = _lookupIcdContext(original, qaHistory);
+
+      // ── Stage 1 (Layer 2): Standard mode + 画像 + ICD grounding ──
       onStageProgress?.call('analyzing');
-      final prompt =
-          _buildConversationalPrompt(original, qaHistory, _maxQuestions);
+      final prompt = _buildConversationalPrompt(
+          original, qaHistory, _maxQuestions, icdContext);
       const imagePromptSuffix = '''
 
 ━━ IMAGE ATTACHED ━━
@@ -780,7 +829,7 @@ Apply the same response format. Include visual findings in SUMMARY.
         return TriageStep.done(stage1Parsed);
       }
 
-      // ── Stage 2 (フォールバック): ICD-11 + Thinking + 画像 ──
+      // ── Stage 2 (Layer 3): Thinking + 画像 (escalation only, ICD reused) ──
       await Future.delayed(const Duration(milliseconds: 800));
       final finalResult = await _generateFinalTriage(
         original: original,
@@ -788,6 +837,7 @@ Apply the same response format. Include visual findings in SUMMARY.
         langCode: langCode,
         stage1Result: stage1Parsed,
         imageBytes: imageBytesU8,
+        icdContext: icdContext,
         onStageProgress: onStageProgress,
       );
       return TriageStep.done(finalResult);
