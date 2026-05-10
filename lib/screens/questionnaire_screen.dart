@@ -281,7 +281,12 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
       parts.add('（患部の写真を添付しています）');
     }
 
-    return parts.join('。 ');
+    // ★ 構造化問診票の入力をすべて「確定情報」としてラップ。
+    //   AI が「部位は?」「重症度は?」と再質問するのを防ぐ。
+    //   Plain text の前置きで AI に「これは答え済み」と明示する。
+    final body = parts.join('。 ');
+    return '【記入済み問診票（再質問しないでください）】\n$body\n'
+        '【上記以外で診断に必要な情報のみ質問してください】';
   }
 
   bool get _canSubmit =>
@@ -739,7 +744,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
             selectedKey: _pregnancy,
             onTap: (k) => setState(
                 () => _pregnancy = (_pregnancy == k) ? '' : k),
-            activeColor: const Color(0xFFB71C1C),
+            activeColor: const Color(0xFF00897B),
             prefix: 'pregnancy',
           ),
         ],
@@ -1638,27 +1643,28 @@ class _TypingBubbleState extends State<_TypingBubble>
                       const Color(0xFF42A5F5).withValues(alpha: 0.3),
                   width: 1),
             ),
+            // Flutter perf: Opacity widget → 色 alpha 直接適用に変更 (saveLayer 回避)
             child: AnimatedBuilder(
               animation: _ctrl,
               builder: (_, __) => Row(
                 mainAxisSize: MainAxisSize.min,
-                children: List.generate(3, (i) {
-                  final t = (_ctrl.value + i / 3) % 1.0;
-                  final opacity = sin(t * pi).clamp(0.25, 1.0);
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Opacity(
-                      opacity: opacity,
+                children: [
+                  for (var i = 0; i < 3; i++)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
                       child: Container(
                         width: 7,
                         height: 7,
-                        decoration: const BoxDecoration(
-                            color: Colors.white60,
-                            shape: BoxShape.circle),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(
+                            alpha: sin(((_ctrl.value + i / 3) % 1.0) * pi)
+                                .clamp(0.25, 1.0),
+                          ),
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
-                  );
-                }),
+                ],
               ),
             ),
           ),

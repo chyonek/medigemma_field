@@ -35,7 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadInfo() async {
     setState(() => _isLoading = true);
-    final info = await ModelService.getModelInfo();
+    final info = await ModelService.loadModelInfo();
     if (!mounted) return;
     setState(() {
       _info = info;
@@ -228,10 +228,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Changing language re-translates the UI via Gemma 4 (may take a moment first time per language).\n'
-            '言語切替後、UI を Gemma 4 で再翻訳します（言語ごとに初回のみ少し時間がかかります）。',
+            'By default the app uses your phone\'s system language. '
+            'Tap "Change" to switch to a different language at any time.\n'
+            '通常はスマホの設定言語を自動で使います。'
+            '別の言語に切り替えたいときは「切替」を押してください。\n\n'
+            'Changing language re-translates the UI via Gemma 4 '
+            '(may take a few minutes first time per language).\n'
+            '言語切替後、UI を Gemma 4 で再翻訳します'
+            '（言語ごとに初回のみ数分かかります）。',
             style:
-                TextStyle(color: Colors.white54, fontSize: 11, height: 1.4),
+                TextStyle(color: Colors.white54, fontSize: 12, height: 1.5),
           ),
         ],
       ),

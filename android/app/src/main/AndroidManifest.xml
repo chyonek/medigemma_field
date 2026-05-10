@@ -8,11 +8,23 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- wakelock_plus が Setup/DL 中に画面消灯防止するために必要 -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- ─ Foreground Service: 2.4GB モデル DL を画面消灯/裏化でも継続するため ─
+         background_downloader が WorkManager で起動する DL job を foreground
+         service 化し、Android が「重要なジョブ」と認識して kill しないようにする。
+         Android 9+ (API 28+) で FOREGROUND_SERVICE 必須。
+         Android 14+ (API 34+) で type 別の追加許可 FOREGROUND_SERVICE_DATA_SYNC が必須。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- バッテリー最適化からの除外をリクエストする権限（任意・ユーザー許諾必要）。
+         長時間 DL 中の doze mode 介入を抑制。 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 
     <application
         android:label="medigemma_field"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:largeHeap="true"
+        android:hardwareAccelerated="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -40,6 +52,18 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- flutter_gemma GPU acceleration (LiteRT-LM)
+             これらが無いと GPU フォールバックして CPU 推論になり激遅 -->
+        <uses-native-library
+            android:name="libOpenCL.so"
+            android:required="false"/>
+        <uses-native-library
+            android:name="libOpenCL-car.so"
+            android:required="false"/>
+        <uses-native-library
+            android:name="libOpenCL-pixel.so"
+            android:required="false"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

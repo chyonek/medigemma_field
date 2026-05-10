@@ -1353,27 +1353,32 @@ class _TypingBubbleState extends State<_TypingBubble>
                       const Color(0xFF42A5F5).withValues(alpha: 0.3),
                   width: 1),
             ),
+            // Flutter perf:
+            // - Opacity widget は (子が複雑だと) saveLayer を発火するアンチパターン
+            //   → 色に alpha を直接乗せる (withValues) 方式に変更
+            // - AnimatedBuilder の builder 内で List.generate するとアニメーション
+            //   tick ごとに 3 個の widget が作り直される → 静的部を child に外出し
             child: AnimatedBuilder(
               animation: _ctrl,
               builder: (_, __) => Row(
                 mainAxisSize: MainAxisSize.min,
-                children: List.generate(3, (i) {
-                  final t = (_ctrl.value + i / 3) % 1.0;
-                  final opacity = sin(t * pi).clamp(0.25, 1.0);
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Opacity(
-                      opacity: opacity,
+                children: [
+                  for (var i = 0; i < 3; i++)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
                       child: Container(
                         width: 7,
                         height: 7,
-                        decoration: const BoxDecoration(
-                            color: Colors.white60,
-                            shape: BoxShape.circle),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(
+                            alpha: sin(((_ctrl.value + i / 3) % 1.0) * pi)
+                                .clamp(0.25, 1.0),
+                          ),
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
-                  );
-                }),
+                ],
               ),
             ),
           ),

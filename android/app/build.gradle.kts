@@ -29,6 +29,14 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // flutter_gemma の .litertlm / Vision / Embedding は arm64-v8a のみで動く。
+        // 他の ABI を含めると x86_64 エミュレータや古い armeabi-v7a 端末で
+        // UnsatisfiedLinkError + クラッシュ。Play Store にも壊れた APK が
+        // 配布されてしまうので arm64-v8a に限定。
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -36,6 +44,11 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // flutter_gemma が release build で UnsatisfiedLinkError や
+            // missing class を起こさないようコード難読化を無効化。
+            // (本アプリは APK サイズ削減より動作優先)
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

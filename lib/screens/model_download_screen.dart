@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/connectivity_service.dart';
 import '../services/screen_keep_on.dart';
 import '../l10n/terms_translations.dart';
 import '../services/model_service.dart';
@@ -124,6 +125,84 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
     await prefs.setBool('gemma_terms_accepted_v1', true);
   }
 
+  // ─── ネットワーク警告ダイアログ ───────────────────────────────
+  // 「モバイルデータでも続行する？」の確認。
+  // CLAUDE.md ターゲットの 10 言語で静的提供 (DL 前のため Gemma 動的翻訳不可)。
+  Future<bool?> _showMobileDataWarning(NetworkType type) {
+    final isMobile = type == NetworkType.mobile;
+    final sizeMb = (_remoteSizeBytes ?? 2588147712) ~/ (1024 * 1024);
+    final title = isMobile ? _l10n.mobileDataTitle : _l10n.noWifiTitle;
+    final body = isMobile
+        ? _l10n.mobileDataMessage.replaceAll('{MB}', sizeMb.toString())
+        : _l10n.noWifiMessage;
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1B2738),
+        icon: Icon(
+          isMobile ? Icons.signal_cellular_alt : Icons.warning_amber_rounded,
+          color: const Color(0xFFE65100),
+          size: 36,
+        ),
+        title: Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white, fontSize: 18),
+        ),
+        content: Text(
+          body,
+          style: const TextStyle(
+              color: Colors.white70, fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              _l10n.cancel,
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              _l10n.continueAnyway,
+              style: const TextStyle(color: Color(0xFFE65100)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showNoConnectionDialog() {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1B2738),
+        icon: const Icon(Icons.signal_wifi_off,
+            color: Color(0xFFB71C1C), size: 36),
+        title: Text(
+          _l10n.noConnectionTitle,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white, fontSize: 18),
+        ),
+        content: Text(
+          _l10n.noConnectionMessage,
+          style: const TextStyle(
+              color: Colors.white70, fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(_l10n.ok,
+                style: const TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Monotonic 進捗追跡（リトライで一時的に 0% に戻ってもユーザーには見せない）
   // flutter_gemma の smart_downloader は再試行時に一時的に 0% を発火するが、
   // その瞬間に UI が「やり直し」のように見えてしまうため、最大値を保持する
@@ -132,6 +211,23 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
   Future<void> _startDownload() async {
     debugPrint('[DL Screen] _startDownload invoked');
     if (!_termsAccepted) return;
+
+    // ★ 2.4GB を従量課金で食わせない: モバイル / その他接続なら警告ダイアログ。
+    //   海外ユーザー (本アプリのターゲット) は特にデータ料金が高い (GSMA 2025)。
+    final netType = await ConnectivityService.currentType();
+    if (!mounted) return;
+    if (netType == NetworkType.none) {
+      await _showNoConnectionDialog();
+      return;
+    }
+    if (netType != NetworkType.wifi && netType != NetworkType.ethernet) {
+      final proceed = await _showMobileDataWarning(netType);
+      if (proceed != true) {
+        debugPrint('[DL Screen] User cancelled download due to mobile data');
+        return;
+      }
+    }
+
     await _persistTermsAcceptance();
 
     // 通知権限を一度リクエスト（拒否されても DL 自体は継続）
@@ -315,6 +411,10 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
               ),
               const SizedBox(height: 24),
 
+              // ━━ なぜこのセットアップ?（一回きり・メリット説明） ━━
+              if (!_isDownloading) _whyCard(),
+              if (!_isDownloading) const SizedBox(height: 16),
+
               // ━━ メリット一覧 ━━
               _benefitRow(Icons.wifi_off, _l10n.benefitOffline),
               _benefitRow(Icons.lock_outline, _l10n.benefitPrivacy),
@@ -349,6 +449,52 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ─── 「なぜセットアップが必要？」 説明カード ───────────────────
+  // ユーザーフィードバック: 何のための DL かが伝わらないと不安。
+  // 一回きり・メリット・端末完結を 1 カードで端的に説明。
+  Widget _whyCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1B2738),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: const Color(0xFF42A5F5).withValues(alpha: 0.25), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.info_outline,
+                  color: Color(0xFF42A5F5), size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _l10n.whyDownloadTitle,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _l10n.whyDownloadBody,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+        ],
       ),
     );
   }

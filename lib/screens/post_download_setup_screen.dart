@@ -148,8 +148,10 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'This takes 1–2 minutes the first time only.\n'
-                  '初回のみ 1〜2 分かかります。',
+                  'First-time setup: about 5 minutes on most phones.\n'
+                  'Please keep this screen open until done.\n\n'
+                  '初回セットアップ：おおよそ 5 分かかります。\n'
+                  '完了するまでこの画面を開いたままにしてください。',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       color: Colors.white60, fontSize: 13, height: 1.5),

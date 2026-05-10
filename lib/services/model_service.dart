@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // - 匿名 DL 可能（HF トークン不要・2026-05-09 検証済み）
 // - .litertlm 形式（旧 .task 廃止）
 // - ファイルサイズ：約 2.4 GB（int4 量子化）
-// - flutter_gemma 0.14.5 の installModel ビルダー API を使用
+// - flutter_gemma 0.15.0 の installModel ビルダー API を使用
 
 const _modelUrl =
     'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm';
@@ -63,7 +63,7 @@ class ModelInfo {
 
 class ModelService {
   /// モデルがダウンロード済みか
-  /// 0.14.5 では FlutterGemma.hasActiveModel() で active inference model 有無を判定
+  /// 0.15.0: FlutterGemma.hasActiveModel() で active inference model 有無を判定
   static Future<bool> isModelDownloaded() async {
     return FlutterGemma.hasActiveModel();
   }
@@ -123,8 +123,8 @@ class ModelService {
   }
 
   /// モデルの詳細情報を取得（Settings 画面用）
-  /// 0.14.5: getStorageInfo で全体ストレージ情報を取得
-  static Future<ModelInfo> getModelInfo() async {
+  /// 0.15.0: getStorageInfo で全体ストレージ情報を取得
+  static Future<ModelInfo> loadModelInfo() async {
     final isDownloaded = await isModelDownloaded();
     if (!isDownloaded) {
       return const ModelInfo(isDownloaded: false);
@@ -137,7 +137,7 @@ class ModelService {
           await FlutterGemmaPlugin.instance.modelManager.getStorageInfo();
       sizeBytes = stats.totalSizeBytes;
     } catch (e) {
-      debugPrint('[ModelService.getModelInfo] storage info failed: $e');
+      debugPrint('[ModelService.loadModelInfo] storage info failed: $e');
     }
 
     DateTime? downloadedAt;
@@ -152,14 +152,14 @@ class ModelService {
     return ModelInfo(
       isDownloaded: true,
       sizeBytes: sizeBytes,
-      // 0.14.5 では具体的なファイルパスは内部管理のため抽象表記のみ
+      // 0.15.0 では具体的なファイルパスは内部管理のため抽象表記のみ
       filePath: 'app-private/$_modelFilename',
       downloadedAt: downloadedAt,
     );
   }
 
   /// ダウンロード進捗を Stream で返す（0〜100 の整数）
-  /// 0.14.5: installModel ビルダー API を使用
+  /// 0.15.0: installModel ビルダー API を使用
   /// HF トークン不要（Gemma 4 は Apache 2.0 ・匿名 DL 可能）
   static Stream<int> downloadModel() {
     debugPrint('[ModelService.downloadModel] called — creating controller');
@@ -226,7 +226,7 @@ class ModelService {
   }
 
   /// モデルを削除（GDPR Article 17 削除権対応）
-  /// 0.14.5: FlutterGemma.uninstallModel(modelId) を使用
+  /// 0.15.0: FlutterGemma.uninstallModel(modelId) を使用
   static Future<void> deleteModel() async {
     try {
       await FlutterGemma.uninstallModel(_modelFilename);

@@ -39,22 +39,49 @@ dependencies:
   flutter_tts: ^4.2.0
   flutter_dotenv: ^5.2.1
   shared_preferences: ^2.3.0
-  flutter_gemma: ^0.14.5  # Gemma 4 + .litertlm 対応のため 0.14.5 に更新（破壊的変更）
+  flutter_gemma: ^0.15.0  # 0.15.0: LiteRT-LM 0.11.0 + MTP/speculative decoding (~1.5-2x 高速化)
   path_provider: ^2.1.0
   http: ^1.2.0
-  # wakelock_plus: ^1.2.10  # 一旦無効化・plugin loader 問題切り分け中
+  wakelock_plus: ^1.2.10  # DL 中に Android が裏化で WorkManager job kill する問題対策
   # flutter_local_notifications: ^18.0.1  # 一旦無効化・plugin loader 問題
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
-  # The "flutter_lints" package below contains a set of recommended lints to
-  # encourage good coding practices. The lint set provided by the package is
-  # activated in the `analysis_options.yaml` file located at the root of your
-  # package. See that file for information about deactivating specific lint
-  # rules and activating additional ones.
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.6
   flutter_lints: ^6.0.0
+
+# ─── アプリアイコン (Android Launcher) ─────────────────────
+# 実行: flutter pub run flutter_launcher_icons
+# Android 8+ では adaptive_icon (foreground + background) が使われる
+# 旧 Android では image_path の単一画像が使われる
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#FFFBF0"  # cream — 画像の背景と整合
+  adaptive_icon_foreground: "assets/icon/app_icon_fg.png"
+  adaptive_icon_foreground_inset: 16   # 円マスク時の安全マージン (px)
+  min_sdk_android: 21
+  remove_alpha_ios: true
+
+# ─── 起動スプラッシュ画面 ─────────────────────────────────
+# 実行: dart run flutter_native_splash:create
+# 1080x2400 の splash.png を Android スプラッシュ画面として表示
+flutter_native_splash:
+  color: "#FFFBF0"          # cream — splash.png の背景と整合
+  image: assets/splash/splash.png
+  android_12:
+    # Android 12+ (Pixel 6a 含む) は中央の icon のみ表示 (full image 不可)。
+    # 透過 PNG を直接使うと「icon が消えて見える」現象があるため、
+    # cream 背景込みの app_icon.png を使い、splash 背景色と blend。
+    image: assets/icon/app_icon.png
+    color: "#FFFBF0"
+    icon_background_color: "#FFFBF0"
+  android: true
+  ios: false
+  web: false
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

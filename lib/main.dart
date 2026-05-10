@@ -28,7 +28,7 @@ void main() async {
     debugPrint('[main] .env not loaded (expected in production): $e');
   }
 
-  // flutter_gemma 0.14.5：アプリ起動時に一度だけ初期化
+  // flutter_gemma 0.15.0：アプリ起動時に一度だけ初期化
   // Gemma 4 は HF トークン不要だが、開発時に .env の HF_TOKEN があれば
   // rate limit 緩和のため使用（任意）
   final hfToken = dotenv.env['HF_TOKEN']?.trim();

@@ -10,7 +10,8 @@ import 'model_service.dart';
 // オンライン API は廃止。すべての推論は端末内で完結。
 //
 // 採用モデル：Gemma 4 E2B int4 `.litertlm`（≈ 2.4 GB・Apache 2.0）
-// flutter_gemma 0.14.5+ の新 API（installModel ビルダー / createSession）を使用。
+// flutter_gemma 0.15.0+ の API（installModel ビルダー / createSession +
+// enableSpeculativeDecoding）を使用。LiteRT-LM 0.11.0 + MTP で高速化。
 //
 // 3 層ルーティング設計：
 //  Layer 1: ICD-11 辞書ルックアップ（IcdService）
@@ -19,8 +20,80 @@ import 'model_service.dart';
 //
 // Cactus Prize の "intelligently routes tasks between models" に 3 通りで適合。
 
-// ─── 会話履歴つき多段階問診プロンプト（Standard mode 用）────────
-// WHO ETAT + OPQRST + 人口統計的考慮をすべて統合
+// ─── システム指示 (静的・全コール共通) ──────────────────────────
+// Gemma 4 公式推奨「Native System Prompt Support」を活用。
+// ETAT/OPQRST/言語/出力フォーマット等の不変ルールはここに集約し、
+// session.createSession(systemInstruction: ...) で渡す。
+//
+// メリット:
+//   - 推奨アーキテクチャ (system role の native サポート活用)
+//   - 会話履歴と分離できプロンプト管理が clean
+//   - per-call user message が短くなり KV cache 圧迫が減る
+const String _conversationalSystemInstruction = '''
+You are a WHO ETAT triage assistant for remote/low-resource settings.
+
+━ ETAT EMERGENCY SIGNS (any present → TYPE: TRIAGE LEVEL: 3 immediately) ━
+airway obstruction · severe breathing difficulty · shock · unconscious · convulsions ·
+severe bleeding · chest pain · stroke signs · snake bite · poisoning · severe dehydration · severe burns
+
+━ MISSING-INFO CHECK (OPQRST + demographics) ━
+Onset · Quality · Region · Severity (1-10) · Time/duration · Associated symptoms ·
+Age (child/adult/elderly affects level) · Sex+pregnancy (mandatory for repro-age female with
+abdominal/pelvic/back pain or vaginal bleeding — consider ectopic pregnancy)
+
+━ FOLLOW-UP RULES ━
+• Accept vague answers and move on; never rephrase the same question.
+• Do NOT re-ask info already in the initial complaint or earlier answers.
+• Build on the previous answer; reference a specific symptom mentioned.
+• Use plain, friendly language. No medical jargon.
+• Pain severity: scale 1-10 with anchors. Pain quality: give choices (sharp/dull/burning/cramping).
+• Size: everyday objects (rice grain / bean / pea). Time: common timeframes (minutes/hours/today/yesterday/days/week+).
+
+━ DEMOGRAPHICS ━
+<5 years (WHO IMCI): lower threshold for Level 3. ≥65: atypical presentations → HIGHER level.
+
+━ LANGUAGE ━
+Detect language of the initial complaint. All QUESTION/SUMMARY/ACTION/CONDITIONS/DETAILS in that language.
+Format keys (TYPE:, LEVEL:, etc.) stay English.
+Use ONLY the native script (no romaji/pinyin/transliteration).
+NEVER mix Korean (한국어) into Japanese output, or any other language script crossover.
+
+━ INTAKE FORM INPUT — CRITICAL ━
+If the initial complaint is wrapped with markers like 【記入済み問診票（再質問しないでください）】 or
+"PRE-FILLED INTAKE FORM" or similar, treat ALL items inside as CONFIRMED facts.
+Do NOT ask about: body region, symptom type, pain severity (1-10), duration/onset,
+age, sex, pregnancy status — if they are listed in the form.
+Ask ONLY about NEW information not in the form (e.g. associated symptoms, fever yes/no, swallowing pain, etc.).
+
+━ RESPONSE FORMAT ━
+
+If asking follow-up:
+TYPE: FOLLOWUP
+QUESTION: [ONE single question, max 25 words, user's language. Never repeat the same question. Never include "|" or "｜" inside the question.]
+QUICK_REPLIES: [3-6 short options separated by " | " (single half-width pipe with spaces), each ≤10 chars, in the SAME LANGUAGE as the question — use yes/no/unknown ONLY for yes-no questions]
+
+If triaging:
+TYPE: TRIAGE
+LEVEL: [1, 2, or 3]
+SUMMARY: [SBAR Situation+Background, 1-3 sentences user's language, include key symptoms+location+severity+duration+demographics]
+ACTION: [one concrete sentence, user's language, what to do RIGHT NOW]
+POSSIBLE_CONDITIONS:
+- [most likely + brief reason, max 15 words]
+- [second if plausible]
+- [third if plausible]
+DETAILS:
+- [home care or first-aid step]
+- [when/which doctor to see if applicable]
+- [red-flag deterioration signs]
+DISCLAIMER: This is not a substitute for professional medical diagnosis.
+
+━ TRIAGE LEVELS (WHO ETAT) ━
+1 = home care · 2 = see doctor in 24-72h, specify specialty · 3 = hospital NOW, state what to tell doctor.
+When uncertain, assign the HIGHER level.
+''';
+
+// ─── ユーザー側プロンプト (動的・呼び出しごとに変わる) ──────────
+// 患者の主訴 + Q&A 履歴 + 残質問数だけを user message に入れる。
 String _buildConversationalPrompt(
   String original,
   List<Map<String, String>> qaHistory,
@@ -29,173 +102,31 @@ String _buildConversationalPrompt(
   final questionsAsked = qaHistory.length;
   final remaining = maxQuestions - questionsAsked;
 
-  final historyBlock = qaHistory.isEmpty
-      ? ''
-      : '\n━━ CONVERSATION SO FAR ━━\n' +
-          qaHistory
-              .asMap()
-              .entries
-              .map((e) =>
-                  'Question ${e.key + 1}: ${e.value['q']}\n'
-                  'Answer ${e.key + 1}: ${e.value['a']}')
-              .join('\n\n') +
-          '\n';
+  // Flutter perf: 文字列結合は + より StringBuffer / interpolation が速い。
+  // ループ中の + は毎回 String を再生成してアロケーションを増やす。
+  final String historyBlock;
+  if (qaHistory.isEmpty) {
+    historyBlock = '';
+  } else {
+    final buf = StringBuffer('\n━ CONVERSATION SO FAR ━\n');
+    for (var i = 0; i < qaHistory.length; i++) {
+      final qa = qaHistory[i];
+      buf
+        ..write('Q${i + 1}: ${qa['q']}\n')
+        ..write('A${i + 1}: ${qa['a']}\n');
+    }
+    historyBlock = buf.toString();
+  }
 
   final decisionRule = remaining <= 0
-      ? 'DECISION RULE: You have reached the maximum of $maxQuestions questions. '
-          'You MUST now respond TYPE: TRIAGE. Do NOT ask another question.'
-      : 'DECISION RULE: You may ask up to $remaining more question(s). '
-          'Ask only if a clinically critical piece of information is still missing. '
-          'If you already have enough information to triage accurately, respond TYPE: TRIAGE now.';
+      ? 'DECISION: $maxQuestions questions reached. You MUST respond TYPE: TRIAGE now.'
+      : 'DECISION: Up to $remaining more question(s) allowed. If enough info → respond TYPE: TRIAGE now.';
 
   return '''
-You are a medical triage assistant following WHO Emergency Triage Assessment and Treatment (ETAT) guidelines, designed for remote areas and resource-limited settings.
-
-━━ PATIENT ━━
+━ PATIENT ━
 Initial complaint: "$original"
 $historyBlock
-━━ PRIORITY CHECK: WHO ETAT Emergency Signs ━━
-If ANY of these signs are present, respond TYPE: TRIAGE with LEVEL: 3 immediately:
-• Airway obstruction or severe difficulty breathing
-• Signs of shock: cold extremities, weak/rapid pulse, altered consciousness
-• Unconsciousness or active convulsions
-• Severe uncontrolled bleeding or major trauma
-• Chest pain or pressure (possible cardiac event)
-• Signs of stroke: facial droop, arm weakness, speech difficulty
-• Snake or animal bite / suspected poisoning or overdose
-• Severe dehydration: sunken eyes, dry mouth, no urine output
-• Severe burns covering large body area
-
-━━ INFORMATION COMPLETENESS: OPQRST + Demographics ━━
-Assess what is still unknown. A clinically sound triage should ideally cover:
-• Onset — when did it start? sudden or gradual?
-• Quality — what does it feel like? (sharp / dull / burning / cramping / pressure)
-• Region — where exactly? does it radiate or spread?
-• Severity — how bad on a scale of 1–10?
-• Time — how long? constant or intermittent?
-• Associated symptoms — fever, vomiting, bleeding, etc.
-• Age — required if triage level differs between child / adult / elderly
-• Sex and pregnancy status — required for abdominal, pelvic, back pain, leg swelling,
-  breast symptoms, or urinary symptoms in anyone who may be female of reproductive age
-• Location / access to care — affects recommended triage level in remote settings
-
 $decisionRule
-
-━━ FOLLOW-UP QUESTION GUIDELINES — CRITICAL ━━
-• ACCEPT REASONABLE ANSWERS. If the patient gave a reasonable answer (even if vague),
-  accept it and move on to a different aspect. NEVER re-ask the same thing rephrased.
-  Example WRONG: "Where is the pain?" → "middle" → "Can you be more specific?" ❌
-  Example RIGHT: "Where is the pain?" → "middle" → next question about another aspect ✓
-• Patients in remote/refugee settings often cannot give precise answers. That is OK.
-  Move on to a different OPQRST element or demographic factor.
-• ★★ Do not ask about the same topic twice. Check the conversation history above.
-   If the patient already gave the body part (e.g. "throat / 喉"), do NOT ask
-   "where exactly?" — the part is fixed. Drill into pain quality / duration / severity instead.
-• ★★ Do not ask about information the patient ALREADY provided in the initial complaint.
-   If the initial complaint says "throat pain", do NOT ask "where does it hurt?".
-• ★★ Once the patient answers a question, treat that answer as final. Do not ask the same
-   question with synonyms or examples. If they said "sharp / 鋭い", do NOT ask
-   "is it sharp, dull, or burning?" again.
-• Use plain, friendly language — assume the user has no medical training.
-
-━━ CONVERSATION CONTINUITY RULE (HARD CONSTRAINT) ━━
-The next question MUST be a logical continuation of the conversation.
-ABSOLUTELY FORBIDDEN behaviors:
-✗ Starting with vague phrases like "Can you...?" / "できますか？" / "教えてください" without
-  immediate context referring to a specific symptom.
-✗ Ignoring the patient's most recent answer.
-✗ Introducing topics unrelated to the patient's stated symptoms.
-✗ Asking generic questions that could apply to any patient.
-
-REQUIRED:
-✓ Reference a specific symptom or detail the patient already mentioned.
-✓ Drill DEEPER into the existing symptom set (e.g. if abdominal pain → ask about pain
-  location, associated nausea, fever, etc., not random topics).
-✓ Each question should feel like it is BUILDING on what was said before.
-
-━━ PAIN ASSESSMENT — PLAIN-LANGUAGE GUIDANCE ━━
-When asking about pain severity (the "S" in OPQRST), use friendly language with examples:
-• Good: "1〜10で表すと、1は『軽い違和感』、10は『今までで一番ひどい痛み』、今はどのくらい？"
-• Good (English): "On a scale of 1–10, where 1 is mild and 10 is the worst pain you can imagine, how bad is it?"
-• BAD: "Severity 1-10?" (too clinical, confusing for laypeople)
-
-When asking about pain quality (the "Q" in OPQRST), give CHOICES instead of open question:
-• Good: "鋭い痛みですか？鈍い痛みですか？焼けるような痛みですか？"
-• Good (English): "Is it sharp, dull, burning, or cramping?"
-• BAD: "Describe the quality of the pain." (too vague)
-
-━━ SIZE / AMOUNT QUESTIONS — USE EVERYDAY OBJECTS ━━
-When asking about size (rashes, lumps, bumps, wounds, blood loss volume, etc.), use
-everyday-object analogies that anyone can answer without measuring:
-• Good: "大きさはどのくらい？米粒くらい？小豆くらい？大豆くらい？それより大きい？"
-• Good (English): "How big is it? Like a grain of rice? A small bean? A pea? Larger?"
-• BAD: "What is the diameter in millimeters?" (impossible for laypeople)
-For blood: "ティースプーン1杯くらい / コップ半分くらい / それ以上"
-
-━━ TIME / DURATION QUESTIONS — USE EVERYDAY TIMEFRAMES ━━
-When asking about timing, give common timeframes as choices:
-• Good: "いつ始まりましたか？数分前 / 数時間前 / 今日 / 昨日 / 数日前 / 1週間以上前"
-• Good (English): "When did it start? Minutes ago / hours ago / today / yesterday / a few days ago / over a week ago"
-
-━━ DEMOGRAPHIC REASONING ━━
-AGE:
-• Children under 5 (WHO IMCI): lower threshold for Level 3 for fever, breathing, feeding
-• Elderly 65+: atypical presentations; assign HIGHER level when uncertain
-• If age is not stated and it would change the triage level — ask
-
-SEX AND PREGNANCY:
-• Female of reproductive age with abdominal/pelvic/back pain, leg swelling, or vaginal bleeding:
-  always consider ectopic pregnancy, miscarriage, ovarian torsion, or DVT/PE
-• If sex and pregnancy status are unknown and clinically relevant — ask
-
-━━ CRITICAL LANGUAGE RULE ━━
-Detect the language of the initial complaint. All QUESTION / ACTION / DETAILS content
-must be written in that language. Format keys stay in English.
-
-SCRIPT RULE — native writing system ONLY, no romanization of any kind:
-• Japanese → kanji/hiragana/katakana only. Zero romaji.
-• Arabic, Persian, Urdu → Arabic script only. No Latin letters.
-• Hindi, Nepali, Marathi → Devanagari only.
-• Thai, Lao → native scripts only.
-• Korean → Hangul only.
-• Chinese → characters only. No pinyin.
-• Russian, Ukrainian → Cyrillic only.
-• Greek → Greek script only.
-
-━━ RESPONSE FORMAT ━━
-
-If asking a follow-up question → respond EXACTLY:
-TYPE: FOLLOWUP
-QUESTION: [One question in USER'S LANGUAGE. Ask only the SINGLE most important missing item. Max 25 words. Do not combine multiple questions.]
-QUICK_REPLIES: [3 to 6 short answer options for THIS specific question, in USER'S LANGUAGE, separated by " | ". Each option max 10 characters. Examples:
-  - For "鋭い痛みですか、鈍い痛みですか？" → "鋭い | 鈍い | 焼ける | 締めつけ | 波がある"
-  - For "いつから痛いですか？" → "数分前 | 数時間前 | 今日 | 昨日 | 数日前 | 1週間以上"
-  - For "10段階でどのくらい痛い？" → "軽い (2) | 中くらい (5) | かなり (7) | 我慢できない (9)"
-  - For "発熱はありますか？" → "はい | いいえ | わからない"
-  - For yes/no questions, use "はい | いいえ | わからない"
-  - For age questions, use age groups like "0〜4歳 | 5〜12歳 | 13〜17歳 | 18〜64歳 | 65歳以上"
-  - DO NOT generate "yes/no/unknown" for non-yes-no questions. Match the question type.]
-
-If triaging → respond EXACTLY:
-TYPE: TRIAGE
-LEVEL: [1, 2, or 3]
-SUMMARY: [SBAR Situation+Background — 1–3 sentences in USER'S LANGUAGE summarizing what you understood from the patient. Include: key symptoms, location, severity, duration, and any demographic factors (age/sex/pregnancy) that influenced your assessment.]
-ACTION: [One concrete sentence in USER'S LANGUAGE — what to do RIGHT NOW]
-POSSIBLE_CONDITIONS:
-- [Most likely condition in USER'S LANGUAGE — short phrase + brief clinical reason. Max 15 words.]
-- [Second possibility, if applicable. Same format.]
-- [Third possibility max. Only include if genuinely plausible.]
-DETAILS:
-- [Specific immediate home care or first-aid steps]
-- [When and which type of doctor/department to see, if applicable]
-- [Specific red-flag warning signs indicating deterioration]
-DISCLAIMER: This is not a substitute for professional medical diagnosis.
-
-━━ TRIAGE LEVELS (WHO ETAT) ━━
-Level 1 — Non-urgent: Manageable at home with specific home care instructions.
-Level 2 — Priority: See a doctor within 24–72 hours. Specify specialty.
-Level 3 — Emergency: Go to hospital immediately. State what to tell the doctor.
-When uncertain, always assign the HIGHER level.
 ''';
 }
 
@@ -473,8 +404,10 @@ class GemmaService {
   static const int _maxQuestions = 5;
 
   // Gemma 4 モデル設定
-  // 推論コンテキスト：SUMMARY + ACTION + POSSIBLE_CONDITIONS + DETAILS の
-  // 5 セクション応答 + 会話履歴を考慮して 2048 トークン確保
+  // flutter_gemma 公式推奨: <6GB RAM 端末では maxTokens を 2048 以下に抑える
+  // (Pixel 6a は 6GB ぴったり = ボーダー)。
+  // システムプロンプトを ~2300 → ~1100 token に圧縮したので 2048 で収まる。
+  // KV cache メモリ削減 → native OOM クラッシュ回避。
   static const int _maxTokens = 2048;
 
   // 永続化されたオフラインモデル（init は1回のみ・close するまで保持）
@@ -509,24 +442,39 @@ class GemmaService {
       final raw = await _callOffline(
         _buildConversationalPrompt(original, qaHistory, _maxQuestions),
         isThinking: false,
+        systemInstruction: _conversationalSystemInstruction,
       );
       debugPrint('[GemmaService.analyzeNext] Stage 1 raw:\n$raw');
 
       // フォローアップ判定 → そのまま Standard 結果を返す
       if (!forceTriageNow && raw.contains('TYPE: FOLLOWUP')) {
         final question = _extractFollowUpQuestion(raw, langCode);
-        final quickReplies = _extractQuickReplies(raw);
+        final quickReplies = _extractQuickReplies(raw, langCode);
         if (question.isNotEmpty) {
           return TriageStep.followUp(question, langCode,
               quickReplies: quickReplies);
         }
       }
 
-      // ── Stage 2: ICD-11 + Thinking mode（高精度・~30 秒） ──
-      // 最終トリアージとなる場合のみ実行
-      debugPrint(
-          '[GemmaService.analyzeNext] Stage 2: ICD-11 lookup + thinking mode');
+      // Stage 1 が有効な TRIAGE を返した場合：Stage 2 (Thinking) を**スキップ**。
+      // 理由: 0.14.5 では GPU sampler 不在で CPU fallback → Stage 2 thinking が
+      // +80〜120 秒かかり 3 分超え。0.15.0 + MTP で改善見込みだが、Stage 1 で
+      // 十分な精度が出ているなら不要な追加レイテンシを避ける設計判断。
+      // 問診情報が不十分なら _parseResponse の action が空になるので Stage 2 へフォールバック。
       final stage1Parsed = _parseResponse(raw, langCode);
+      if (stage1Parsed.action.trim().isNotEmpty) {
+        debugPrint(
+            '[GemmaService.analyzeNext] Stage 1 produced valid TRIAGE — skipping Stage 2 for speed');
+        return TriageStep.done(stage1Parsed);
+      }
+
+      // ── Stage 2: ICD-11 + Thinking mode（高精度・~80 秒） ──
+      // Stage 1 が解析失敗 or action が空の場合のフォールバックのみ実行
+      // ⚠️ flutter_gemma 0.14.x のセッション再作成 SIGSEGV 回避のため delay
+      // (0.15.0 で改善済みかは未検証 — 念のため defensive code として残す)
+      await Future.delayed(const Duration(milliseconds: 800));
+      debugPrint(
+          '[GemmaService.analyzeNext] Stage 2 (fallback): ICD-11 + thinking');
       final finalResult = await _generateFinalTriage(
         original: original,
         qaHistory: qaHistory,
@@ -556,19 +504,19 @@ class GemmaService {
     required Uint8List? imageBytes,
     void Function(String stageMessage)? onStageProgress,
   }) async {
-    // 全会話を 1 つのテキストに連結（ICD-11 検索キー用）
-    final fullConversation = original +
-        ' ' +
-        qaHistory
-            .map((qa) => '${qa['q'] ?? ''} ${qa['a'] ?? ''}')
-            .join(' ');
+    // 全会話を 1 つのテキストに連結（ICD-11 検索キー用）。
+    // Flutter perf: + より interpolation/StringBuffer。
+    final fullConversation = StringBuffer(original)..write(' ');
+    for (final qa in qaHistory) {
+      fullConversation.write('${qa['q'] ?? ''} ${qa['a'] ?? ''} ');
+    }
 
     // ICD-11 ルックアップ（失敗してもクリティカルでない・空配列で続行）
     onStageProgress?.call('searching_icd11');
     List<IcdMatch> icdMatches = const [];
     try {
       icdMatches =
-          IcdService.instance.lookup(fullConversation, maxResults: 5);
+          IcdService.instance.lookup(fullConversation.toString(), maxResults: 5);
       debugPrint(
           '[GemmaService] ICD-11 matches: ${icdMatches.length} entries');
     } catch (e) {
@@ -589,8 +537,11 @@ class GemmaService {
     try {
       final thinkingRaw = imageBytes != null
           ? await _callOfflineWithImage(thinkingPrompt, imageBytes,
-              isThinking: true)
-          : await _callOffline(thinkingPrompt, isThinking: true);
+              isThinking: true,
+              systemInstruction: _finalTriageSystemInstruction)
+          : await _callOffline(thinkingPrompt,
+              isThinking: true,
+              systemInstruction: _finalTriageSystemInstruction);
       debugPrint(
           '[GemmaService] Stage 2 thinking raw:\n$thinkingRaw');
 
@@ -620,37 +571,44 @@ class GemmaService {
     required List<Map<String, String>> qaHistory,
     required String icdContext,
   }) {
-    final historyBlock = qaHistory.isEmpty
-        ? ''
-        : '\n━━ Q&A ━━\n' +
-            qaHistory
-                .asMap()
-                .entries
-                .map((e) =>
-                    'Q${e.key + 1}: ${e.value['q']}\nA${e.key + 1}: ${e.value['a']}')
-                .join('\n') +
-            '\n';
+    // Flutter perf: + より StringBuffer。
+    final String historyBlock;
+    if (qaHistory.isEmpty) {
+      historyBlock = '';
+    } else {
+      final buf = StringBuffer('\n━━ Q&A ━━\n');
+      for (var i = 0; i < qaHistory.length; i++) {
+        final qa = qaHistory[i];
+        buf.write('Q${i + 1}: ${qa['q']}\nA${i + 1}: ${qa['a']}\n');
+      }
+      historyBlock = buf.toString();
+    }
 
     final icdBlock = icdContext.isEmpty ? '' : '\n$icdContext\n';
 
+    // user message: 動的データ部のみ。ルールは _finalTriageSystemInstruction へ。
     return '''
-You are providing the FINAL medical triage assessment based on the full conversation below. Use careful step-by-step reasoning before answering.
-
-━━ PATIENT ━━
+━ PATIENT ━
 Initial complaint: "$original"
-$historyBlock$icdBlock
-━━ TRIAGE INSTRUCTIONS ━━
-- Reason carefully about the most likely conditions, considering ICD-11 references above if relevant.
-- Apply WHO ETAT triage levels (1=home care, 2=see doctor in 24-72h, 3=emergency now).
+$historyBlock$icdBlock''';
+  }
+
+  // Stage 2 (Thinking) 用の system instruction (静的・全コール共通)
+  static const String _finalTriageSystemInstruction = '''
+You are providing the FINAL medical triage assessment. Use careful step-by-step reasoning before answering.
+
+━ TRIAGE INSTRUCTIONS ━
+- Reason carefully about the most likely conditions, using ICD-11 references in the user message if provided.
+- Apply WHO ETAT levels (1=home care, 2=see doctor in 24-72h, 3=emergency now).
 - When uncertain, assign HIGHER level. Especially:
   • Reproductive-age woman + abdominal/pelvic pain → consider ectopic pregnancy (Level 3)
   • Children under 5 with rapid breathing / fever → consider severe pneumonia (Level 3)
   • Sudden severe headache, chest pain, slurred speech → emergency
-- Respond in patient's language. Native script only (no romaji for Japanese, etc.)
+- Respond in patient's language. Native script only (no romaji/pinyin/transliteration).
 
-━━ RESPONSE FORMAT (EXACTLY) ━━
+━ RESPONSE FORMAT (EXACTLY) ━
 LEVEL: [1, 2, or 3]
-SUMMARY: [1-3 sentences in patient's language summarizing what you understood: key symptoms, location, severity, duration, demographic factors.]
+SUMMARY: [1-3 sentences in patient's language: key symptoms, location, severity, duration, demographic factors.]
 ACTION: [One concrete sentence in patient's language — what to do RIGHT NOW.]
 POSSIBLE_CONDITIONS:
 - [Most likely condition (use ICD-11 reference name if applicable). Max 15 words.]
@@ -662,7 +620,6 @@ DETAILS:
 - [Red-flag warning signs to watch for]
 DISCLAIMER: This is not a substitute for professional medical diagnosis.
 ''';
-  }
 
   /// 強制トリアージで AI が指定形式で返さなかった時の最終フォールバック。
   /// 「診断できませんでした」と表示するより、控えめだが有用な結果を出す。
@@ -705,22 +662,55 @@ DISCLAIMER: This is not a substitute for professional medical diagnosis.
     ).firstMatch(raw);
     var question = match?.group(1)?.trim() ?? '';
     if (langCode == 'ja-JP') question = _stripRomaji(question);
-    return question;
+    // ★ AI が「question | question | question」のように同じ質問を pipe で
+    //   重複出力することがある (ja で実測)。区切り直して dedupe する。
+    //   半角 | と全角 ｜ の両方に対応。
+    final dedup = _dedupeQuestion(question);
+    return dedup;
+  }
+
+  /// 同じ質問が pipe (`|` または `｜`) で繰り返されてる場合に重複除去
+  static String _dedupeQuestion(String q) {
+    if (q.isEmpty) return q;
+    // 半角・全角どちらの pipe でも分割
+    final parts = q.split(RegExp(r'[|｜]')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    if (parts.length <= 1) return q;
+    // 全部同じ → 最初の 1 つだけ返す
+    final first = parts.first;
+    if (parts.every((p) => p == first)) return first;
+    // 違う質問が pipe で連結されてる場合 → 最初の 1 つだけ採用
+    // (FOLLOWUP は単一質問のはず・複数あれば AI のミス)
+    return first;
   }
 
   /// QUICK_REPLIES: 行を抽出して | 区切りで配列化
   /// 形式に沿わない時は null を返す（呼び出し側でローカルフォールバックへ）
-  static List<String>? _extractQuickReplies(String raw) {
+  static List<String>? _extractQuickReplies(String raw, [String? langCode]) {
     final match = RegExp(r'QUICK_REPLIES:\s*(.+)').firstMatch(raw);
     if (match == null) return null;
     final line = match.group(1)?.trim() ?? '';
     if (line.isEmpty) return null;
     final parts = line
-        .split('|')
+        .split(RegExp(r'[|｜]'))  // 半角・全角 pipe 両対応
         .map((p) => p.trim())
         .where((p) => p.isNotEmpty && p.length <= 30) // 長すぎは異常値として除外
         .toList();
     if (parts.length < 2) return null; // 1 個だけはおかしい
+
+    // ★ 言語混入チェック: 入力言語と異なる script を含むものを除去
+    //   例: ja-JP 入力に対してハングル 한국어 が混入することがある
+    if (langCode != null && langCode.startsWith('ja')) {
+      final filtered = parts.where((p) {
+        // 日本語: 仮名・漢字・ASCII・記号・数字のみを許容
+        // ハングル (가-힯) や繁体字以外の Devanagari 等を含むものは除外
+        if (RegExp(r'[가-힯]').hasMatch(p)) return false; // ハングル
+        if (RegExp(r'[ऀ-ॿ]').hasMatch(p)) return false; // Devanagari
+        if (RegExp(r'[؀-ۿ]').hasMatch(p)) return false; // アラビア
+        return true;
+      }).toList();
+      if (filtered.length >= 2) return filtered.take(6).toList();
+      return null; // 大半が異言語だったら null フォールバック
+    }
     return parts.take(6).toList(); // 最大 6 個
   }
 
@@ -767,6 +757,7 @@ Apply the same response format. Include visual findings in SUMMARY.
         prompt + imagePromptSuffix,
         imageBytesU8,
         isThinking: false,
+        systemInstruction: _conversationalSystemInstruction,
       );
       debugPrint('[GemmaService.analyzeNextWithImage] Stage 1 raw:\n$raw');
 
@@ -774,15 +765,23 @@ Apply the same response format. Include visual findings in SUMMARY.
       final forceTriageNow = qaHistory.length >= _maxQuestions;
       if (!forceTriageNow && raw.contains('TYPE: FOLLOWUP')) {
         final question = _extractFollowUpQuestion(raw, langCode);
-        final quickReplies = _extractQuickReplies(raw);
+        final quickReplies = _extractQuickReplies(raw, langCode);
         if (question.isNotEmpty) {
           return TriageStep.followUp(question, langCode,
               quickReplies: quickReplies);
         }
       }
 
-      // ── Stage 2: ICD-11 + Thinking + 画像 ──
+      // Stage 1 が有効 TRIAGE → Stage 2 スキップ (UX 速度優先・前述の理由)
       final stage1Parsed = _parseResponse(raw, langCode);
+      if (stage1Parsed.action.trim().isNotEmpty) {
+        debugPrint(
+            '[GemmaService.analyzeNextWithImage] Stage 1 valid — skipping Stage 2');
+        return TriageStep.done(stage1Parsed);
+      }
+
+      // ── Stage 2 (フォールバック): ICD-11 + Thinking + 画像 ──
+      await Future.delayed(const Duration(milliseconds: 800));
       final finalResult = await _generateFinalTriage(
         original: original,
         qaHistory: qaHistory,
@@ -853,9 +852,18 @@ Apply the same response format. Include visual findings in SUMMARY.
 
     debugPrint(
         '[GemmaService] Creating Gemma 4 model (supportImage=$supportImage)...');
+    // PreferredBackend.gpu を明示すると LiteRT-LM が OpenCL でモバイル GPU を
+    // 使うので CPU 推論より大幅に高速 + メモリ圧迫も軽減。
+    // 利用不可な端末では自動的に CPU にフォールバックする (公式仕様)。
+    //
+    // ★ enableSpeculativeDecoding: true (flutter_gemma 0.15.0 + LiteRT-LM 0.11.0)
+    //   .litertlm 内の tf_lite_mtp_drafter (~818MB) を draft model として活用。
+    //   理論上 1.5-2x の inference 高速化。
     _persistentOfflineModel = await FlutterGemma.getActiveModel(
       maxTokens: _maxTokens,
       supportImage: supportImage,
+      preferredBackend: PreferredBackend.gpu,
+      enableSpeculativeDecoding: true,
     );
     _persistentSupportsImage = supportImage;
     debugPrint('[GemmaService] Gemma 4 model ready.');
@@ -863,10 +871,13 @@ Apply the same response format. Include visual findings in SUMMARY.
   }
 
   /// テキスト入力でオフライン推論
-  /// [isThinking]: Thinking Mode を有効化（Day 3 で activated）
+  /// [isThinking]: Thinking Mode を有効化
+  /// [systemInstruction]: Gemma 4 native system role に渡す静的指示
+  ///                      未指定なら通常の user-only プロンプト
   static Future<String> _callOffline(
     String prompt, {
     bool isThinking = false,
+    String? systemInstruction,
   }) async {
     final hasModel = await ModelService.isModelDownloaded();
     if (!hasModel) {
@@ -876,10 +887,45 @@ Apply the same response format. Include visual findings in SUMMARY.
     }
 
     final model = await _ensureOfflineModel(supportImage: false);
+    // Gemma 4 公式推奨サンプリング (Kaggle model card 準拠):
+    //   temperature=1.0, topK=64, topP=0.95
+    // ベンチマーク (MMLU/GPQA/AIME 等) はこの設定で測定されているので、
+    // この値が「素の Gemma 4 の最良性能」を引き出す。
     final session = await model.createSession(
-      temperature: 0.7,
-      topK: 40,
+      temperature: 1.0,
+      topK: 64,
+      topP: 0.95,
       enableThinking: isThinking,
+      systemInstruction: systemInstruction,
+    );
+    try {
+      await session.addQueryChunk(Message.text(text: prompt, isUser: true));
+      return await session.getResponse();
+    } finally {
+      await session.close();
+    }
+  }
+
+  /// 翻訳など「決定的なタスク」用の高速版オフライン推論。
+  /// translateUiStrings から呼ばれる。
+  ///
+  /// ⚠️ Gemma 4 公式推奨 (temp=1.0/topK=64/topP=0.95) からは意図的に逸脱。
+  /// 翻訳は「正解が 1 つの決定論的タスク」で、推奨値は creativity を許容する
+  /// generative 用途向け。低 temperature + 低 topK で:
+  ///   - JSON 出力の安定性向上 (構文崩壊回避)
+  ///   - sampling 時間短縮 (候補絞り込みが速い)
+  ///   - 同一入力で同じ訳が出る → キャッシュ整合性
+  static Future<String> _callOfflineFast(String prompt) async {
+    final hasModel = await ModelService.isModelDownloaded();
+    if (!hasModel) {
+      throw Exception('Offline model not downloaded.');
+    }
+    final model = await _ensureOfflineModel(supportImage: false);
+    final session = await model.createSession(
+      temperature: 0.2,
+      topK: 20,
+      topP: 0.95,
+      enableThinking: false,
     );
     try {
       await session.addQueryChunk(Message.text(text: prompt, isUser: true));
@@ -890,11 +936,13 @@ Apply the same response format. Include visual findings in SUMMARY.
   }
 
   /// 画像付きでオフライン推論（Gemma 4 マルチモーダル）
-  /// [isThinking]: Thinking Mode を有効化（Day 3 で activated）
+  /// [isThinking]: Thinking Mode を有効化
+  /// [systemInstruction]: Gemma 4 native system role に渡す静的指示
   static Future<String> _callOfflineWithImage(
     String prompt,
     Uint8List imageBytes, {
     bool isThinking = false,
+    String? systemInstruction,
   }) async {
     final hasModel = await ModelService.isModelDownloaded();
     if (!hasModel) {
@@ -904,11 +952,14 @@ Apply the same response format. Include visual findings in SUMMARY.
     }
 
     final model = await _ensureOfflineModel(supportImage: true);
+    // Gemma 4 公式推奨サンプリング (Kaggle model card): temp=1.0/topK=64/topP=0.95
     final session = await model.createSession(
-      temperature: 0.7,
-      topK: 40,
+      temperature: 1.0,
+      topK: 64,
+      topP: 0.95,
       enableVisionModality: true,
       enableThinking: isThinking,
+      systemInstruction: systemInstruction,
     );
     try {
       await session.addQueryChunk(
@@ -973,46 +1024,68 @@ Apply the same response format. Include visual findings in SUMMARY.
     final hasModel = await ModelService.isModelDownloaded();
     if (!hasModel) return null;
 
-    final stringList = englishStrings.entries
-        .map((e) => '${e.key}=${e.value}')
-        .join('\n');
+    // 入力を JSON 形式にしておくと出力もそれを真似する → パース成功率↑
+    final inputJson = jsonEncode(englishStrings);
 
-    final prompt = '''
-You are translating UI strings for a medical triage mobile app into the language with code "$targetLocale".
-
-Rules:
-- Output ONLY a JSON object. No markdown, no explanation, no preamble.
-- Keys (left of =) MUST stay exactly as-is, in English.
-- Values (right of =) MUST be translated naturally for a mobile app UI.
-- Keep translations short (mobile screens are narrow).
-- For "$targetLocale", use its native script and natural phrasing.
-- Do not include keys not in the input.
-
-Input strings:
-$stringList
-
-JSON output:
-''';
+    // ★ 医療コンテキストを明示するとトーンが医療向けに揃う。
+    //   "patient/healthcare/symptom" 等の医療語彙を翻訳に活用させる。
+    final prompt =
+        'You translate UI strings for a medical triage mobile app aimed at non-medical users '
+        '(patients, family members, community health workers in remote areas). '
+        'Translate JSON values to natural $targetLocale using clear, friendly, healthcare-appropriate language. '
+        'Use proper medical terminology where applicable (e.g. "症状" not just "状態", "受診" not just "見せる"), '
+        'but keep wording approachable for laypeople. '
+        'Use native script only (no romaji/pinyin). '
+        'Keep keys EXACTLY as-is in English. '
+        'Output ONLY the JSON object, no markdown, no preamble, no explanation.\n'
+        '$inputJson';
 
     try {
-      final raw = await _callOffline(prompt);
-
-      // JSON 抽出（モデルが余計な前置き出すことがあるため正規表現で）
-      final jsonMatch = RegExp(r'\{[\s\S]+\}').firstMatch(raw);
-      if (jsonMatch == null) {
+      final raw = await _callOfflineFast(prompt);
+      // 切れ尾を含めても extract できる tolerant parser を使う
+      final result = _extractTranslationsTolerant(raw, englishStrings.keys);
+      if (result.isEmpty) {
         debugPrint(
-            '[translateUiStrings] No JSON found in response: ${raw.substring(0, raw.length.clamp(0, 200))}');
+            '[translateUiStrings] could not salvage any pairs from response: ${raw.substring(0, raw.length.clamp(0, 200))}');
         return null;
       }
-
-      final decoded = jsonDecode(jsonMatch.group(0)!) as Map<String, dynamic>;
-      // 値を文字列に正規化
-      final result = decoded.map((k, v) => MapEntry(k, v.toString()));
+      debugPrint(
+          '[translateUiStrings] salvaged ${result.length}/${englishStrings.length} keys');
       return result;
     } catch (e) {
       debugPrint('[translateUiStrings] Error: $e');
       return null;
     }
+  }
+
+  /// 翻訳出力 (truncate されている可能性あり) から有効な key:value ペアを救出する。
+  /// JSON が `{"k1":"v1","k2":"v2","k3` のように途中で切れていても、
+  /// k1/k2 は救出する。完全な JSON 解析は諦めて regex で抽出。
+  static Map<String, String> _extractTranslationsTolerant(
+      String raw, Iterable<String> validKeys) {
+    final result = <String, String>{};
+    final keySet = validKeys.toSet();
+
+    // "key": "value" ペアを抽出。エスケープされた " も対応 ((?:\\.|[^"\\])*).
+    final pattern = RegExp(
+      r'"([a-z_][a-z0-9_]*)"\s*:\s*"((?:\\.|[^"\\])*)"',
+      caseSensitive: false,
+    );
+
+    for (final match in pattern.allMatches(raw)) {
+      final key = match.group(1);
+      var value = match.group(2);
+      if (key == null || value == null) continue;
+      if (!keySet.contains(key)) continue; // 入力に無いキーは捨てる
+      // バックスラッシュ・エスケープを un-escape
+      value = value
+          .replaceAll(r'\"', '"')
+          .replaceAll(r'\\', r'\')
+          .replaceAll(r'\n', '\n');
+      if (value.trim().isEmpty) continue;
+      result[key] = value;
+    }
+    return result;
   }
 
   /// 入力テキストから言語を検出して TTS / 翻訳に使う言語コードを返す。
