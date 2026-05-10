@@ -230,8 +230,16 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
 
     await _persistTermsAcceptance();
 
-    // 通知権限を一度リクエスト（拒否されても DL 自体は継続）
-    NotificationService.requestPermissionIfNeeded();
+    // ★ POST_NOTIFICATIONS runtime 許可を「先に await」する。
+    //   Android 13+ ではこれが無いと background_downloader の foreground
+    //   service が notification を出せず → 通常 WorkManager job に降格 →
+    //   裏化時に kill されて DL が 4-10% で止まる (Pixel 6a 実測)。
+    //   await することでユーザーがダイアログに応答するまで DL を始めない。
+    //   拒否されても DL 自体は試行するが UX としては不安定になる。
+    final notifGranted =
+        await NotificationService.requestPermissionIfNeeded();
+    debugPrint('[DL Screen] notification permission granted: $notifGranted');
+    if (!mounted) return;
 
     // 画面消灯防止 ON（DL 中はずっと・終了時に必ず OFF）
     try {
@@ -732,14 +740,57 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
               color: Colors.white70, fontSize: 13, fontFamily: 'monospace'),
         ),
       ],
-      const SizedBox(height: 8),
+      const SizedBox(height: 16),
+      // ★ DL 中は foreground service が裏化耐性を持つので「別作業 OK」と伝える。
+      //   Post-DL Setup の方で keep-open を強調する。
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1976D2).withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: const Color(0xFF42A5F5).withValues(alpha: 0.5), width: 1),
+        ),
+        child: const Column(
+          children: [
+            Row(
+              children: [
+                Icon(Icons.info_outline,
+                    color: Color(0xFF42A5F5), size: 22),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'You can use other apps during download',
+                    style: TextStyle(
+                      color: Color(0xFF42A5F5),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 6),
+            Text(
+              'Download continues in the background.\n'
+              'We\'ll show a notification when it\'s done.\n'
+              'ダウンロード中は他のアプリを使っても大丈夫です。\n'
+              '完了したら通知でお知らせします。',
+              textAlign: TextAlign.left,
+              style: TextStyle(
+                  color: Colors.white70, fontSize: 12, height: 1.5),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
       Text(
         _showEnglishAlongside
             ? '${_l10n.keepOpen}\n${TermsL10n.forLocale("en").keepOpen}'
             : _l10n.keepOpen,
         textAlign: TextAlign.center,
         style: const TextStyle(
-            color: Colors.white60, fontSize: 13, height: 1.4),
+            color: Colors.white60, fontSize: 12, height: 1.4),
       ),
     ];
   }

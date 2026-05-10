@@ -148,15 +148,63 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'First-time setup: about 5 minutes on most phones.\n'
-                  'Please keep this screen open until done.\n\n'
-                  '初回セットアップ：おおよそ 5 分かかります。\n'
-                  '完了するまでこの画面を開いたままにしてください。',
+                  'First-time setup: about 4 minutes on most phones.\n'
+                  '初回セットアップ：おおよそ 4 分かかります。',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       color: Colors.white60, fontSize: 13, height: 1.5),
                 ),
-                const SizedBox(height: 36),
+                const SizedBox(height: 20),
+
+                // ★ 強調警告バナー: 「画面ロック禁止・アプリ閉じないで」
+                //   Flutter + on-device LLM の制約上、推論は activity が
+                //   foreground にある間のみ可能。Activity が裏化されると
+                //   Dart isolate が pause され、最悪 OS にプロセス kill される。
+                //   ユーザーに事前に明示することで「途中で別アプリを開いて
+                //   セットアップが固まる」UX 不具合を防ぐ。
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE65100).withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: const Color(0xFFE65100), width: 1.5),
+                  ),
+                  child: const Column(
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded,
+                              color: Color(0xFFFFB74D), size: 22),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Keep this screen open',
+                              style: TextStyle(
+                                color: Color(0xFFFFB74D),
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        '• Do NOT lock the screen\n'
+                        '• Do NOT switch to other apps\n'
+                        '• 画面をロックしないでください\n'
+                        '• 他のアプリに切り替えないでください',
+                        textAlign: TextAlign.left,
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            height: 1.5),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 28),
 
                 // ━━ Phase 1: モデルウォームアップ ━━
                 _phaseRow(

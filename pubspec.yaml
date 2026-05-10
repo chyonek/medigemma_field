@@ -40,10 +40,27 @@ dependencies:
   flutter_dotenv: ^5.2.1
   shared_preferences: ^2.3.0
   flutter_gemma: ^0.15.0  # 0.15.0: LiteRT-LM 0.11.0 + MTP/speculative decoding (~1.5-2x 高速化)
+  # ★ background_downloader を direct dep に昇格 (元々 flutter_gemma 経由で transitive)
+  #   FileDownloader.configureNotification() を直接呼んで foreground service の
+  #   通知設定を登録するために必要。SmartDownloader は runInForeground を設定するが
+  #   通知設定がないと Android 13+ で foreground service が起動できない (deprecated
+  #   important-while-foreground flag のみで、通知 channel + notification が無いと
+  #   ForegroundService に昇格できず通常 job に降格 → 裏化時に kill される)。
+  background_downloader: ^9.5.4
   path_provider: ^2.1.0
   http: ^1.2.0
   wakelock_plus: ^1.2.10  # DL 中に Android が裏化で WorkManager job kill する問題対策
   # flutter_local_notifications: ^18.0.1  # 一旦無効化・plugin loader 問題
+  # ★ permission_handler 撤去 (2026-05-11)
+  #   POST_NOTIFICATIONS runtime 許可は MainActivity.kt で直接ネイティブ実装。
+  #   Windows-Gradle 環境で permission_handler の kernel_snapshot 依存解決
+  #   問題が再現したため、パッケージを使わず Activity の onCreate で
+  #   ActivityCompat.requestPermissions() を呼ぶ方式に切替。
+  # ★ セキュリティメモ: at-rest 暗号化は Android File-Based Encryption (FBE)
+  #   に委譲。Android 7+ で app-private storage は hardware-backed key で
+  #   自動暗号化される。flutter_secure_storage の追加は当初検討したが、
+  #   wakelock_plus との依存衝突で kernel_snapshot がビルドエラーを起こす
+  #   環境問題が発生したため不採用。OWASP Principle #2 は OS-level FBE で達成。
 
 dev_dependencies:
   flutter_test:

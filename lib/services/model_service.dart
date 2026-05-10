@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -79,10 +80,12 @@ class ModelService {
 
       debugPrint(
           '[ModelService] Model file exists but inactive — re-activating...');
+      // 再 activate は no-op (ファイル存在検出後の active 化のみ) なので
+      // foreground 指定は不要だが、明示的に false を渡して挙動を統一。
       await FlutterGemma.installModel(
         modelType: ModelType.gemma4,
         fileType: ModelFileType.litertlm,
-      ).fromNetwork(_modelUrl).install();
+      ).fromNetwork(_modelUrl, foreground: false).install();
       debugPrint('[ModelService] Re-activation complete');
       return FlutterGemma.hasActiveModel();
     } catch (e) {
@@ -194,11 +197,46 @@ class ModelService {
     Future<void> runInstall() async {
       debugPrint('[ModelService.downloadModel] runInstall: starting install()');
       try {
+        // ★ Android 13+ で foreground service を確実に起動するための通知設定。
+        //   SmartDownloader は runInForeground=Config.always を設定するだけで、
+        //   肝心の TaskNotificationConfig を登録していない。
+        //   通知設定がないと Android JobScheduler は foreground service として
+        //   起動せず、通常 WorkManager job に降格 → 裏化時に kill される
+        //   (Pixel 6a で 6-10% 付近で再現・2026-05-11)。
+        //   FileDownloader は singleton なので、ここで直接 configureNotification()
+        //   を呼べば SmartDownloader 内部の DL タスクもこの通知を使う。
+        FileDownloader().configureNotification(
+          running: const TaskNotification(
+            'Downloading AI model',
+            'Tap to return to MediGemma · keep app open',
+          ),
+          complete: const TaskNotification(
+            'Download complete — tap to continue setup',
+            'AI setup will take ~3 more minutes. Keep app open.',
+          ),
+          error: const TaskNotification(
+            'Download failed',
+            'Tap to retry.',
+          ),
+          progressBar: true,
+        );
+        debugPrint(
+            '[ModelService.downloadModel] notification config registered for foreground service');
+
+        // ★ foreground: true を明示。
+        //   AUTO モード (file size >500MB で auto foreground) では実際の DL 開始
+        //   タイミングと foreground service 昇格にラグがあり、起動直後に Activity
+        //   が裏化すると WorkManager job が kill される (Pixel 6a で 10% 付近で
+        //   発生確認・2026-05-11)。
+        //   2.4GB の DL は確実に foreground 必須なので AUTO に頼らず明示する。
+        //   AndroidManifest.xml の FOREGROUND_SERVICE / FOREGROUND_SERVICE_DATA_SYNC
+        //   権限と組み合わせて常時 foreground 通知を維持し、
+        //   バックグラウンド化・スリープ中も DL 継続。
         await FlutterGemma.installModel(
           modelType: ModelType.gemma4,
           fileType: ModelFileType.litertlm,
         )
-            .fromNetwork(_modelUrl)
+            .fromNetwork(_modelUrl, foreground: true)
             .withProgress((p) {
           lastProgress = p;
           progressEmits++;
