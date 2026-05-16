@@ -65,6 +65,10 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # ★ integration_test: 実機 (Pixel 6a) シナリオの自動化用
+  #   実行: flutter test integration_test/app_test.dart -d <device-id>
+  integration_test:
+    sdk: flutter
   flutter_launcher_icons: ^0.14.4
   flutter_native_splash: ^2.4.6
   flutter_lints: ^6.0.0
@@ -115,8 +119,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # ⚠️ .env は asset として bundle しない (real secrets が APK に入る重大な
+  #    セキュリティ問題)。.env は開発時のみ runtime で読まれ、本番では
+  #    存在しなくても問題ない (main.dart で try/catch・HF_TOKEN は任意)。
   assets:
-    - .env
     - assets/images/
     - assets/icd11/
 
