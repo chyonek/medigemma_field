@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'icd_service.dart';
 import 'model_service.dart';
+import 'translation_service.dart';
 
 // ─── Gemma 4 完全オフライン医療トリアージサービス ─────────────────
 //
@@ -50,22 +51,22 @@ severe burns · suspected ectopic pregnancy (reproductive-age woman + abdominal/
 </EMERGENCY_SIGNS>
 
 <CORE_RULES priority="critical">
-Every turn, the user message contains TOPICS_ANSWERED and TOPICS_AVAILABLE blocks at the top.
-Read them FIRST. Then apply ALL four rules below.
+The user message ends with an INSTRUCTION line telling you EXACTLY what topic to ask about
+(or to produce TRIAGE). Follow it literally.
 
-R1. Pick ONE topic from TOPICS_AVAILABLE and ask about ONLY that topic.
-    NEVER ask about anything in TOPICS_ANSWERED.
-    NEVER combine 2 topics with や/、/and/or in one question.
+R1. Ask ONE focused question about the topic in INSTRUCTION. Nothing else.
 
-R2. If TOPICS_AVAILABLE is empty or you have enough info → output TYPE: TRIAGE now.
+R2. If INSTRUCTION says "produce TRIAGE" → output TYPE: TRIAGE in the format below.
 
-R3. QUICK_REPLIES must be valid answers to THIS specific question:
-    - yes/no question → "はい | いいえ | わからない"
-    - severity (only if SEVERITY in AVAILABLE) → "1〜3軽い | 4〜6中 | 7〜10強い"
-    - factual (color, time, place) → concrete options
-    NEVER mismatch (e.g. severity scale on yes/no question).
+R3. QUICK_REPLIES must be valid answers to YOUR question, IN THE PATIENT'S LANGUAGE:
+    - yes/no → "Yes | No | Not sure"
+    - severity 0-10 → "1-3 mild | 4-6 moderate | 7-10 severe"
+    - factual choices → concrete short options (3-6 items, each ≤10 chars)
 
-R4. Acknowledge the prior answer in 1 short clause, then ask about the new topic.
+R4. Briefly acknowledge the most recent prior answer (e.g. "Since yesterday, got it.") then ask.
+
+R5. NEVER output "TOPICS_*", "KNOWN FACTS:", or other meta-blocks in your response.
+    Output ONLY the TYPE: FOLLOWUP or TYPE: TRIAGE format below.
 </CORE_RULES>
 
 <INTAKE_AND_GROUNDING>
@@ -107,35 +108,35 @@ DISCLAIMER: This is not a substitute for professional medical diagnosis.
 <EXAMPLE label="good_followup">
 Prior: "throat pain since yesterday" → Output:
 TYPE: FOLLOWUP
-QUESTION: 昨日から痛むとのこと。飲み込むとき特に痛みますか？
-QUICK_REPLIES: はい | いいえ | わからない
+QUESTION: Since yesterday, got it. Does it hurt especially when swallowing?
+QUICK_REPLIES: Yes | No | Not sure
 </EXAMPLE>
 
 <EXAMPLE label="good_triage">
 TYPE: TRIAGE
 LEVEL: 2
-SUMMARY: 30代女性、昨日から喉の痛みと微熱。嚥下時に痛みが強い。
-ACTION: 1〜2日以内に内科を受診してください。細菌感染の可能性があるためです。
+SUMMARY: Woman in her 30s, sore throat and low fever since yesterday. Pain worsens on swallowing.
+ACTION: See a clinician within 1-2 days. A bacterial infection is possible.
 POSSIBLE_CONDITIONS:
-- 扁桃炎 — のど奥の感染で腫れて痛む
-- 咽頭炎 — のど全体の炎症
+- Tonsillitis — infection of the tonsils causing swelling and pain
+- Pharyngitis — inflammation of the back of the throat
 DETAILS:
-- 温かい飲み物・うがい・休息で和らぐ
-- 内科か耳鼻咽喉科。発熱3日以上で早めに
-- 呼吸困難・首が大きく腫れる場合は今すぐ病院へ
+- Warm drinks, gargling, rest can ease symptoms at home
+- See a general practitioner or ENT; sooner if fever lasts 3+ days
+- Go to hospital immediately if breathing trouble or major neck swelling
 DISCLAIMER: This is not a substitute for professional medical diagnosis.
 </EXAMPLE>
 
 <ANTI_EXAMPLE label="compound_and_mismatched_replies">
-BAD: "痰の色や量はどうですか？" QUICK_REPLIES "1〜3 | 4〜6 | 7〜10"
+BAD: "What is the color and amount of phlegm?" QUICK_REPLIES "1-3 | 4-6 | 7-10"
 WHY: violates R1 (two topics) AND R3 (severity scale on factual question).
-GOOD this turn: "痰の色は何ですか？" QUICK_REPLIES "白 | 黄色 | 緑 | 茶色"
+GOOD this turn: "What color is the phlegm?" QUICK_REPLIES "White | Yellow | Green | Brown"
 </ANTI_EXAMPLE>
 
 <ANTI_EXAMPLE label="re-ask_after_negative_or_known">
-Q1 "他に症状ありますか?" A1 "ない" → BAD Q2 "他に何か感じますか?" (same topic, rephrased).
-KNOWN FACTS has "痛みの強さ: 5" → BAD "強さは?" — already known.
-GOOD: pick a NEW dimension. e.g. "飲み込むとき痛みますか？" QUICK_REPLIES "はい | いいえ | わからない"
+Q1 "Any other symptoms?" A1 "No" → BAD Q2 "Anything else you feel?" (same topic, rephrased).
+KNOWN FACTS has "Pain severity: 5" → BAD "How strong is the pain?" — already known.
+GOOD: pick a NEW dimension. e.g. "Does it hurt when swallowing?" QUICK_REPLIES "Yes | No | Not sure"
 </ANTI_EXAMPLE>
 ''';
 
@@ -192,41 +193,59 @@ String _buildConversationalPrompt(
   final questionsAsked = qaHistory.length;
   final remaining = maxQuestions - questionsAsked;
 
-  // ★ 2026-05-12: 重複質問対策を強化。
-  //   問題: KNOWN FACTS block を冒頭に置いても、E2B は日本語 key と system rule
-  //   の英語 key (onset/severity 等) のマッピングが弱く、再質問が発生する。
-  //   対策: text から topic を heuristic で抽出し、「TOPICS_ANSWERED」「TOPICS_AVAILABLE」
-  //   を**英語コードで明示的に列挙**して user message 冒頭に置く。
-  //   これで model は english code list を見て「どの topic がまだ聞ける」を直接認識できる。
+  // ★ 2026-05-16: 同一質問ループ対策を根本修正。
+  //   旧設計: AI 質問文に keyword が含まれる前提で answered 判定 → 含まれないと
+  //           同じ topic を priority list から再選択し続け、5問同じ質問の致命バグ。
+  //   新設計: intake form でカバー済みの topic だけを除外した priority list を作り、
+  //           qaHistory.length を index として「確定的に」前進させる。
+  //           AI 側で keyword を含めなくても、毎ターン必ず別 topic が選ばれる。
+  //
+  //   1) intake form の text からカバー済み topic を抽出 (Q&A は使わない)
+  final fromIntakeTopics = _extractTopicsFromText(original);
 
-  // 1) 答えられた topics を抽出 (questionnaire + すべての Q&A)
-  final answeredTopics = <String>{};
-  answeredTopics.addAll(_extractTopicsFromText(original));
-  for (final qa in qaHistory) {
-    answeredTopics.addAll(_extractTopicsFromText('${qa['q']} ${qa['a']}'));
-  }
-
-  // 2) Topic 名 ⇒ 簡潔な英語説明
+  // 2) Topic 名 ⇒ 簡潔な英語説明 + 質問のテンプレヒント
+  //    (priority 順に並べる: safety-critical → general)
+  const topicPriority = [
+    'RED_FLAGS',
+    'ASSOCIATED_BREATHING',
+    'ASSOCIATED_FEVER',
+    'ASSOCIATED_SWALLOWING',
+    'ASSOCIATED_COUGH',
+    'ASSOCIATED_NAUSEA',
+    'ASSOCIATED_HEADACHE',
+    'QUALITY',
+    'TRIGGERS',
+    'RELIEF',
+    'MEDICAL_HISTORY',
+    'ONSET',
+    'SEVERITY',
+  ];
   const topicDescriptions = {
-    'QUALITY': 'pain quality (sharp/dull/burning/cramping)',
-    'TRIGGERS': 'what makes it worse',
-    'RELIEF': 'what makes it better',
-    'ASSOCIATED_FEVER': 'fever (yes/no)',
-    'ASSOCIATED_COUGH': 'cough (yes/no)',
-    'ASSOCIATED_NAUSEA': 'nausea/vomiting (yes/no)',
-    'ASSOCIATED_HEADACHE': 'headache (yes/no)',
-    'ASSOCIATED_BREATHING': 'breathing difficulty (yes/no)',
-    'ASSOCIATED_SWALLOWING': 'pain when swallowing (yes/no)',
-    'RED_FLAGS': 'red-flag signs (chest pain, severe weakness, blood)',
-    'MEDICAL_HISTORY': 'relevant medical history',
-    'ONSET': 'when symptom started',
-    'SEVERITY': 'pain severity 0-10',
+    'QUALITY':
+        'pain quality (sharp / dull / burning / cramping) — give 3-4 choices',
+    'TRIGGERS': 'what makes the symptom worse',
+    'RELIEF': 'what makes the symptom better',
+    'ASSOCIATED_FEVER': 'is there fever? — yes/no question',
+    'ASSOCIATED_COUGH': 'is there cough? — yes/no question',
+    'ASSOCIATED_NAUSEA': 'is there nausea or vomiting? — yes/no question',
+    'ASSOCIATED_HEADACHE': 'is there headache? — yes/no question',
+    'ASSOCIATED_BREATHING':
+        'is there breathing difficulty? — yes/no question',
+    'ASSOCIATED_SWALLOWING':
+        'pain when swallowing — yes/no question',
+    'RED_FLAGS':
+        'red-flag signs (severe weakness, blood, etc.) — yes/no question',
+    'MEDICAL_HISTORY': 'relevant medical history or current medications',
+    'ONSET': 'when the symptom started',
+    'SEVERITY': 'pain severity 0-10 — use a 0 to 10 scale anchor',
   };
 
-  // 3) Available topics = 全 topic - 答え済み
-  final allClinicalTopics = topicDescriptions.keys.toSet();
-  final availableTopics =
-      allClinicalTopics.difference(answeredTopics).toList()..sort();
+  // 3) intake でカバー済みを除いた priority list を作り、
+  //    qaHistory.length を index に「確定的に」前進させる。
+  final remainingTopics = topicPriority
+      .where((t) => !fromIntakeTopics.contains(t))
+      .toList();
+  final topicIndex = qaHistory.length; // 毎ターン必ず進む
 
   // 4) 問診票の生 facts も補助情報として残す
   String knownFactsBlock = '';
@@ -238,8 +257,9 @@ String _buildConversationalPrompt(
         .replaceAll('【上記以外で診断に必要な情報のみ質問してください】', '')
         .replaceAll('PRE-FILLED INTAKE FORM', '')
         .trim();
+    // 区切りは英語の ". " と日本語の "。" 両方サポート (旧 JA 入力との後方互換)
     final facts = cleaned
-        .split(RegExp(r'[。\n]'))
+        .split(RegExp(r'[。\n]|\.\s+'))
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .map((s) => '- $s')
@@ -248,17 +268,33 @@ String _buildConversationalPrompt(
     chiefComplaintLine = '(see INTAKE FORM and TOPICS below)';
   }
 
-  // 5) TOPICS_ANSWERED と TOPICS_AVAILABLE を**冒頭**に置く (最重要)
-  final sortedAnswered = answeredTopics.toList()..sort();
-  final answeredBlock = sortedAnswered.isEmpty
-      ? '(none yet)'
-      : sortedAnswered.map((t) => '✗ $t').join('\n');
-  final availableBlock = availableTopics.isEmpty
-      ? '(all explored — produce TRIAGE now)'
-      : availableTopics.map((t) {
-          final desc = topicDescriptions[t] ?? t;
-          return '• $t — $desc';
-        }).join('\n');
+  // 5) Dart 側で「次に聞く topic」を確定的に選ぶ。
+  //    AI には選択させず、phrasing だけ任せる (E2B は構造化選択が苦手なため)。
+  //    全 topic 消化 or 5問到達 → TRIAGE 指示。
+  //
+  //    ⚠️ 直前の AI 質問と KNOWN FACTS から「同じ topic」を選ばないよう、
+  //    topic index は qaHistory.length で確定的に前進 (keyword 依存なし)。
+  String instructionLine;
+  if (remaining <= 0 ||
+      remainingTopics.isEmpty ||
+      topicIndex >= remainingTopics.length) {
+    instructionLine =
+        'INSTRUCTION: All topics covered. Respond TYPE: TRIAGE now (no follow-up).';
+  } else {
+    final nextTopic = remainingTopics[topicIndex];
+    final desc = topicDescriptions[nextTopic] ?? nextTopic;
+    final askedQuestions = qaHistory
+        .map((qa) => '- "${qa['q']}"')
+        .join('\n');
+    final askedBlock = askedQuestions.isEmpty
+        ? ''
+        : '\nALREADY ASKED (do NOT repeat any of these):\n$askedQuestions\n';
+    instructionLine =
+        '${askedBlock}INSTRUCTION: Ask ONE NEW follow-up question about THIS topic only: $desc.\n'
+        'Generate TYPE: FOLLOWUP with a SINGLE question in patient\'s language and 3-6 QUICK_REPLIES that fit this topic.\n'
+        'The question MUST be different from every line in ALREADY ASKED above.\n'
+        'DO NOT re-ask anything in KNOWN FACTS. DO NOT output any "TOPICS_*" or "KNOWN FACTS" lines yourself.';
+  }
 
   // History block
   final String historyBlock;
@@ -277,22 +313,75 @@ String _buildConversationalPrompt(
 
   final icdBlock = icdContext.trim().isEmpty ? '' : '\n$icdContext\n';
 
-  final decisionRule = remaining <= 0
-      ? 'DECISION: $maxQuestions questions reached. Respond TYPE: TRIAGE now.'
-      : 'DECISION: Up to $remaining more question(s). If enough info → respond TYPE: TRIAGE now. Otherwise pick ONE topic from TOPICS_AVAILABLE.';
+  // ★ 2026-05-17: UI ロケールを AI への明示指示として渡す。
+  //   バグ: UI を日本語に切替えても、問診票の構造が英語 + 自由記述が空だと
+  //         AI は「英語入力」と判定して英語で応答する。
+  //   修正: TranslationService.currentLocale を ResponseLanguageDirective として
+  //         プロンプト冒頭に置く。AI は free-text の言語検出より明示指示を優先する。
+  final langDirective = _responseLanguageDirective();
 
-  return '''
-━━━ TOPICS_ANSWERED (DO NOT ASK ABOUT THESE) ━━━
-$answeredBlock
-
-━━━ TOPICS_AVAILABLE (pick ONE per turn) ━━━
-$availableBlock
-
-━ PATIENT ━
+  return '''$langDirective━ PATIENT ━
 Initial complaint: $chiefComplaintLine
 $knownFactsBlock$historyBlock$icdBlock
-$decisionRule
+$instructionLine
 ''';
+}
+
+/// UI ロケールから AI 向けの「この言語で応答せよ」ディレクティブを生成。
+/// プロンプト冒頭に置く。英語の場合は空文字 (default 動作).
+String _responseLanguageDirective() {
+  final locale = TranslationService.instance.currentLocale;
+  if (locale == 'en' || locale.isEmpty) return '';
+  final langName = _localeToLanguageName(locale);
+  return '━ RESPONSE LANGUAGE ━\n'
+      'Respond in $langName ($locale) using its native script.\n'
+      'This applies to QUESTION, QUICK_REPLIES, SUMMARY, ACTION, '
+      'POSSIBLE_CONDITIONS, and DETAILS.\n'
+      'Format keys (TYPE:/LEVEL:/etc.) stay English.\n\n';
+}
+
+/// locale code → 人間可読の言語名 (system instruction で AI が認識する形)
+String _localeToLanguageName(String locale) {
+  switch (locale) {
+    case 'ja':
+      return 'Japanese';
+    case 'sw':
+      return 'Swahili';
+    case 'ar':
+      return 'Arabic';
+    case 'es':
+      return 'Spanish';
+    case 'fr':
+      return 'French';
+    case 'pt':
+      return 'Portuguese';
+    case 'hi':
+      return 'Hindi';
+    case 'zh':
+      return 'Chinese';
+    case 'ru':
+      return 'Russian';
+    case 'de':
+      return 'German';
+    case 'ko':
+      return 'Korean';
+    case 'th':
+      return 'Thai';
+    case 'vi':
+      return 'Vietnamese';
+    case 'tr':
+      return 'Turkish';
+    case 'id':
+      return 'Indonesian';
+    case 'fa':
+      return 'Persian';
+    case 'ur':
+      return 'Urdu';
+    case 'bn':
+      return 'Bengali';
+    default:
+      return locale; // ISO code をそのまま渡す (AI が解釈)
+  }
 }
 
 // ─── 画像診断用プロンプト ──────────────────────────────────────
@@ -435,12 +524,12 @@ class ErrorExplanation {
         s.contains('no offline model')) {
       return ErrorExplanation(
         suspectedCause:
-            'AI モデルがまだダウンロードされていません。\n'
-            '初回は約 2.4 GB のダウンロードが必要です。',
+            'The AI model has not been downloaded yet.\n'
+            'A one-time ~2.4 GB download is required for first use.',
         userAction:
-            '・ホーム画面から「AI をダウンロード」を実行\n'
-            '・Wi-Fi 環境を推奨（モバイルデータでも可）\n'
-            '・一度ダウンロードすれば、以降はネット不要',
+            '• From the home screen, tap "Download AI"\n'
+            '• Wi-Fi is recommended (mobile data also works)\n'
+            '• After download, no internet is needed',
         technicalDetails: tech,
         tag: 'model_not_installed',
       );
@@ -452,12 +541,12 @@ class ErrorExplanation {
         s.contains('failed to allocate')) {
       return ErrorExplanation(
         suspectedCause:
-            '端末のメモリが不足しています。\n'
-            '他のアプリが多くのメモリを使っている可能性があります。',
+            'The device is low on memory.\n'
+            'Other apps may be using a lot of RAM.',
         userAction:
-            '・他のアプリを終了\n'
-            '・端末を再起動\n'
-            '・もう一度試す',
+            '• Close other apps\n'
+            '• Restart the device\n'
+            '• Try again',
         technicalDetails: tech,
         tag: 'oom',
       );
@@ -467,12 +556,12 @@ class ErrorExplanation {
     if (s.contains('timeout') || s.contains('timed out') || s.contains('deadline')) {
       return ErrorExplanation(
         suspectedCause:
-            'AI の応答に時間がかかりすぎました。\n'
-            '端末の処理性能や負荷の問題の可能性があります。',
+            'The AI took too long to respond.\n'
+            'The device may be under heavy load.',
         userAction:
-            '・「もう一度試す」を押す\n'
-            '・他のアプリを終了して再試行\n'
-            '・端末を再起動',
+            '• Tap "Try again"\n'
+            '• Close other apps and retry\n'
+            '• Restart the device',
         technicalDetails: tech,
         tag: 'timeout',
       );
@@ -487,12 +576,12 @@ class ErrorExplanation {
         s.contains('range error')) {
       return ErrorExplanation(
         suspectedCause:
-            'AI の応答が想定外の形式でした。\n'
-            'AI が指示通りに答えなかったか、応答が途中で切れた可能性があります。',
+            'The AI response was in an unexpected format.\n'
+            'The AI may not have followed instructions, or the response was cut off.',
         userAction:
-            '・「もう一度試す」を押す（毎回同じとは限らないので）\n'
-            '・症状の説明をもう少し詳しく書いてみる\n'
-            '・続くようなら開発者に下の「技術的詳細」を見せてください',
+            '• Tap "Try again" (results can vary each time)\n'
+            '• Try writing your symptoms in more detail\n'
+            '• If it persists, share the "Technical details" below with the developer',
         technicalDetails: tech,
         tag: 'parse',
       );
@@ -506,12 +595,12 @@ class ErrorExplanation {
         s.contains('connection')) {
       return ErrorExplanation(
         suspectedCause:
-            'モデルのダウンロード中にネットワークの問題が発生しました。\n'
-            '電波が弱い、Wi-Fi が切れている、または一時的にネットが落ちている可能性があります。',
+            'A network problem occurred during the model download.\n'
+            'Signal may be weak, Wi-Fi disconnected, or the connection temporarily dropped.',
         userAction:
-            '・Wi-Fi または モバイル通信が ON か確認\n'
-            '・電波の良い場所へ移動\n'
-            '・「もう一度試す」を押す（中断地点から再開可能）',
+            '• Check that Wi-Fi or mobile data is ON\n'
+            '• Move to a location with better signal\n'
+            '• Tap "Try again" (download will resume where it stopped)',
         technicalDetails: tech,
         tag: 'network',
       );
@@ -520,10 +609,10 @@ class ErrorExplanation {
     // 不明
     return ErrorExplanation(
       suspectedCause:
-          '原因がはっきり分かりませんでしたが、何らかの問題で AI が応答できませんでした。',
+          'The cause is unclear, but something prevented the AI from responding.',
       userAction:
-          '・「もう一度試す」を押す\n'
-          '・続くようなら開発者に下の「技術的詳細」を見せてください',
+          '• Tap "Try again"\n'
+          '• If it persists, share the "Technical details" below with the developer',
       technicalDetails: tech,
       tag: 'unknown',
     );
@@ -602,24 +691,34 @@ class GemmaService {
   }) async {
     final langCode = _detectLanguageCode(original);
     final forceTriageNow = qaHistory.length >= _maxQuestions;
+    final totalSw = Stopwatch()..start();
+    debugPrint(
+        '[Timing] analyzeNext START turn=${qaHistory.length + 1}/$_maxQuestions');
 
     try {
       // ── Layer 1: ICD-11 grounding (always, ~ms, no inference cost) ──
       // 「progressive enrichment」アーキテクチャ: 安い Layer 1 で常に grounding し、
       // Stage 1 (Layer 2) も Stage 2 (Layer 3) も同じ ICD コンテキストを使う。
-      // 旧設計では Layer 1 が Stage 2 fallback でしか使われず、Stage 1 で完結する
-      // 大半のユーザーが ICD grounding の恩恵を受けられなかった。
       onStageProgress?.call('searching_icd11');
+      final l1Sw = Stopwatch()..start();
       final icdContext = _lookupIcdContext(original, qaHistory);
+      l1Sw.stop();
+      debugPrint(
+          '[Timing] Layer 1 (ICD lookup) = ${l1Sw.elapsedMilliseconds} ms');
 
       // ── Stage 1 (Layer 2): Standard mode (always runs, ~10-15 s) ──
       onStageProgress?.call('analyzing');
       debugPrint('[GemmaService.analyzeNext] Layer 2: Standard mode (with ICD grounding)');
+      final l2Sw = Stopwatch()..start();
       final raw = await _callOffline(
         _buildConversationalPrompt(original, qaHistory, _maxQuestions, icdContext),
         isThinking: false,
         systemInstruction: _conversationalSystemInstruction,
       );
+      l2Sw.stop();
+      debugPrint(
+          '[Timing] Layer 2 (Standard inference) = ${l2Sw.elapsedMilliseconds} ms '
+          '(${(l2Sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s)');
       debugPrint('[GemmaService.analyzeNext] Stage 1 raw:\n$raw');
 
       // フォローアップ判定 → そのまま Standard 結果を返す
@@ -627,6 +726,10 @@ class GemmaService {
         final question = _extractFollowUpQuestion(raw, langCode);
         final quickReplies = _extractQuickReplies(raw, langCode);
         if (question.isNotEmpty) {
+          totalSw.stop();
+          debugPrint(
+              '[Timing] analyzeNext TOTAL = ${totalSw.elapsedMilliseconds} ms '
+              '(FOLLOWUP path, Layer 3 skipped)');
           return TriageStep.followUp(question, langCode,
               quickReplies: quickReplies);
         }
@@ -638,15 +741,18 @@ class GemmaService {
       if (stage1Parsed.action.trim().isNotEmpty) {
         debugPrint(
             '[GemmaService.analyzeNext] Stage 1 produced valid TRIAGE (ICD-grounded) — skipping Layer 3');
+        totalSw.stop();
+        debugPrint(
+            '[Timing] analyzeNext TOTAL = ${totalSw.elapsedMilliseconds} ms '
+            '(Stage1-TRIAGE path, Layer 3 skipped)');
         return TriageStep.done(stage1Parsed);
       }
 
       // ── Stage 2 (Layer 3): Thinking mode (only on escalation, ~80 s) ──
-      // Stage 1 が解析失敗 / action 空の場合のフォールバック。
-      // 同じ icdContext を再利用 (再ルックアップ不要)。
       await Future.delayed(const Duration(milliseconds: 800));
       debugPrint(
           '[GemmaService.analyzeNext] Layer 3: Thinking mode (escalation)');
+      final l3Sw = Stopwatch()..start();
       final finalResult = await _generateFinalTriage(
         original: original,
         qaHistory: qaHistory,
@@ -656,8 +762,19 @@ class GemmaService {
         onStageProgress: onStageProgress,
         imageBytes: null,
       );
+      l3Sw.stop();
+      debugPrint(
+          '[Timing] Layer 3 (Thinking inference) = ${l3Sw.elapsedMilliseconds} ms '
+          '(${(l3Sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s)');
+      totalSw.stop();
+      debugPrint(
+          '[Timing] analyzeNext TOTAL = ${totalSw.elapsedMilliseconds} ms '
+          '(Layer 3 escalation path)');
       return TriageStep.done(finalResult);
     } catch (e, stack) {
+      totalSw.stop();
+      debugPrint(
+          '[Timing] analyzeNext FAILED after ${totalSw.elapsedMilliseconds} ms');
       debugPrint('[GemmaService.analyzeNext] ERROR: $e');
       debugPrint('[GemmaService.analyzeNext] stack: $stack');
       return TriageStep.done(
@@ -676,7 +793,20 @@ class GemmaService {
     try {
       final matches = IcdService.instance
           .lookup(fullConversation.toString(), maxResults: 5);
-      debugPrint('[Layer 1] ICD-11 matches: ${matches.length} entries');
+      if (matches.isEmpty) {
+        debugPrint('[Layer 1] ICD-11 matches: 0 entries (no keyword hit)');
+      } else {
+        debugPrint('[Layer 1] ICD-11 matches: ${matches.length} entries');
+        for (var i = 0; i < matches.length; i++) {
+          final m = matches[i];
+          // IcdMatch.entry は IcdEntry (code/title/urgencyHint/category)
+          final e = m.entry;
+          final score = (m.score * 100).toStringAsFixed(0);
+          debugPrint(
+              '[Layer 1]   #${i + 1}: ${e.code} "${e.title}" '
+              '(L${e.urgencyHint}, ${e.category}, score=$score%)');
+        }
+      }
       return IcdService.instance.buildPromptContext(matches);
     } catch (e) {
       debugPrint('[Layer 1] ICD-11 lookup failed (continuing): $e');
@@ -755,8 +885,9 @@ class GemmaService {
           .replaceAll('【上記以外で診断に必要な情報のみ質問してください】', '')
           .replaceAll('PRE-FILLED INTAKE FORM', '')
           .trim();
+      // 区切りは英語の ". " と日本語の "。" 両方サポート
       final facts = cleaned
-          .split(RegExp(r'[。\n]'))
+          .split(RegExp(r'[。\n]|\.\s+'))
           .map((s) => s.trim())
           .where((s) => s.isNotEmpty)
           .map((s) => '- $s')
@@ -781,9 +912,11 @@ class GemmaService {
 
     final icdBlock = icdContext.isEmpty ? '' : '\n$icdContext\n';
 
+    // ★ 2026-05-17: Layer 3 にも RESPOND LANGUAGE 指示を入れる (Layer 2 と同じ)
+    final langDirective = _responseLanguageDirective();
+
     // user message: 動的データ部のみ。ルールは _finalTriageSystemInstruction へ。
-    return '''
-━ PATIENT ━
+    return '''$langDirective━ PATIENT ━
 Initial complaint: $chiefComplaintLine
 $knownFactsBlock$historyBlock$icdBlock''';
   }
@@ -961,14 +1094,22 @@ DISCLAIMER: This is not a substitute for professional medical diagnosis.
     }
 
     final langCode = _detectLanguageCode(original);
+    final totalSw = Stopwatch()..start();
+    debugPrint(
+        '[Timing] analyzeNextWithImage START turn=${qaHistory.length + 1}/$_maxQuestions');
 
     try {
       // Layer 1: ICD-11 grounding (always-first・progressive enrichment)
       onStageProgress?.call('searching_icd11');
+      final l1Sw = Stopwatch()..start();
       final icdContext = _lookupIcdContext(original, qaHistory);
+      l1Sw.stop();
+      debugPrint(
+          '[Timing] Layer 1 (ICD lookup) = ${l1Sw.elapsedMilliseconds} ms');
 
       // ── Stage 1 (Layer 2): Standard mode + 画像 + ICD grounding ──
       onStageProgress?.call('analyzing');
+      final l2Sw = Stopwatch()..start();
       final prompt = _buildConversationalPrompt(
           original, qaHistory, _maxQuestions, icdContext);
       const imagePromptSuffix = '''
@@ -987,6 +1128,10 @@ Apply the same response format. Include visual findings in SUMMARY.
         isThinking: false,
         systemInstruction: _conversationalSystemInstruction,
       );
+      l2Sw.stop();
+      debugPrint(
+          '[Timing] Layer 2 (Standard inference + image) = ${l2Sw.elapsedMilliseconds} ms '
+          '(${(l2Sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s)');
       debugPrint('[GemmaService.analyzeNextWithImage] Stage 1 raw:\n$raw');
 
       // フォローアップ判定
@@ -995,6 +1140,10 @@ Apply the same response format. Include visual findings in SUMMARY.
         final question = _extractFollowUpQuestion(raw, langCode);
         final quickReplies = _extractQuickReplies(raw, langCode);
         if (question.isNotEmpty) {
+          totalSw.stop();
+          debugPrint(
+              '[Timing] analyzeNextWithImage TOTAL = ${totalSw.elapsedMilliseconds} ms '
+              '(FOLLOWUP path)');
           return TriageStep.followUp(question, langCode,
               quickReplies: quickReplies);
         }
@@ -1005,11 +1154,16 @@ Apply the same response format. Include visual findings in SUMMARY.
       if (stage1Parsed.action.trim().isNotEmpty) {
         debugPrint(
             '[GemmaService.analyzeNextWithImage] Stage 1 valid — skipping Stage 2');
+        totalSw.stop();
+        debugPrint(
+            '[Timing] analyzeNextWithImage TOTAL = ${totalSw.elapsedMilliseconds} ms '
+            '(Stage1-TRIAGE path)');
         return TriageStep.done(stage1Parsed);
       }
 
       // ── Stage 2 (Layer 3): Thinking + 画像 (escalation only, ICD reused) ──
       await Future.delayed(const Duration(milliseconds: 800));
+      final l3Sw = Stopwatch()..start();
       final finalResult = await _generateFinalTriage(
         original: original,
         qaHistory: qaHistory,
@@ -1019,8 +1173,19 @@ Apply the same response format. Include visual findings in SUMMARY.
         icdContext: icdContext,
         onStageProgress: onStageProgress,
       );
+      l3Sw.stop();
+      debugPrint(
+          '[Timing] Layer 3 (Thinking inference + image) = ${l3Sw.elapsedMilliseconds} ms '
+          '(${(l3Sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s)');
+      totalSw.stop();
+      debugPrint(
+          '[Timing] analyzeNextWithImage TOTAL = ${totalSw.elapsedMilliseconds} ms '
+          '(Layer 3 escalation path)');
       return TriageStep.done(finalResult);
     } catch (e, stack) {
+      totalSw.stop();
+      debugPrint(
+          '[Timing] analyzeNextWithImage FAILED after ${totalSw.elapsedMilliseconds} ms');
       debugPrint('[GemmaService.analyzeNextWithImage] ERROR: $e');
       debugPrint('[GemmaService.analyzeNextWithImage] stack: $stack');
       return TriageStep.done(

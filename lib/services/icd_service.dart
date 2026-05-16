@@ -45,9 +45,32 @@ class IcdEntry {
     );
   }
 
+  /// WHO ICD-11 canonical linearization URI (MMS release).
+  ///
+  /// 規格: `http://id.who.int/icd/release/11/mms/{code}` — WHO Foundation
+  /// が発行する deterministic URI で、stem code から一意に決まる。
+  ///
+  /// ライセンス上の意義 (ICD-11 Reference Guide §0.1 software license):
+  /// > "reproduce ICD-11 in part or whole without the ICD-11 URIs
+  /// >  (not applicable for print publications)"
+  /// → ソフトウェアでの利用時は URI を保持して再配布する必要がある。
+  ///   本アプリは grounding context として URI をプロンプトに含めることで
+  ///   この要件を満たす。
+  String get canonicalUri =>
+      code.isEmpty ? '' : 'https://id.who.int/icd/release/11/mms/$code';
+
   /// Gemma 4 プロンプトに統合する際の整形
+  ///
+  /// 出力例:
+  ///   - 1F40 "Malaria" (L3, Infectious) <https://id.who.int/icd/release/11/mms/1F40>
+  ///     Fever with chills/rigors in endemic area...
+  ///
+  /// URI を含めることで:
+  ///  (a) ICD-11 ライセンス §0.1 の URI 保持要件を満たす
+  ///  (b) AI が source を引用可能になる (paraphrase ではなく)
   String toPromptLine() {
-    return '- $code "$title" (urgency hint: L$urgencyHint, $category): $primaryCareNote';
+    final uriPart = canonicalUri.isEmpty ? '' : ' <$canonicalUri>';
+    return '- $code "$title" (L$urgencyHint, $category)$uriPart: $primaryCareNote';
   }
 }
 
@@ -194,10 +217,11 @@ class IcdService {
       return ''; // 空なら何も入れない（無関係なら追加しない）
     }
     final lines = <String>[
-      '━━ ICD-11 REFERENCE (WHO Primary Care, informational) ━━',
-      'The following entries from WHO ICD-11 may be relevant to the case. '
-          'Use them as background only — do not assume any are correct without clinical reasoning. '
-          'Cite condition names in your response if appropriate, but the LEVEL/ACTION decision is yours.',
+      '━━ ICD-11 REFERENCE (WHO Primary Care subset, informational) ━━',
+      'Source: WHO ICD-11 https://icd.who.int/browse11 (CC BY-ND 3.0 IGO).',
+      'Each entry below shows: code "title" (urgency hint, category) <canonical URI>: note.',
+      'Use these as background only — do not assume any are correct without clinical reasoning. '
+          'You may cite condition names in your response when appropriate; the LEVEL/ACTION decision is yours.',
       '',
       ...matches.map((m) => m.entry.toPromptLine()),
     ];

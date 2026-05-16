@@ -141,7 +141,7 @@ class _ConversationScreenState extends State<ConversationScreen>
   // 音声モード = ハンズフリー・識字弱者想定 → TTS は有効化
   Future<void> _startWithVoice() async {
     if (!_speechAvailable) {
-      _showSnack('Speech recognition not available / 音声認識が利用できません');
+      _showSnack('Speech recognition not available');
       return;
     }
     setState(() {
@@ -164,7 +164,37 @@ class _ConversationScreenState extends State<ConversationScreen>
       ),
       pauseFor: const Duration(milliseconds: 1500),
       listenFor: const Duration(seconds: 30),
+      // ★ 2026-05-17: 端末システム言語に依らず、アプリの UI 言語で認識させる。
+      //   UI を日本語にした user が端末 system locale = en_US の場合、
+      //   従来は英語で認識されてしまい AI 応答も英語になっていた。
+      localeId: _sttLocaleId(),
     );
+  }
+
+  /// TranslationService.currentLocale を speech_to_text の localeId 形式
+  /// (ja_JP 等) に変換。マッピングが無い場合は ${locale}_${LOCALE.upper} で
+  /// best-effort 構築 → STT engine 側でフォールバック。
+  String _sttLocaleId() {
+    final locale = TranslationService.instance.currentLocale;
+    switch (locale) {
+      case 'ja': return 'ja_JP';
+      case 'en': return 'en_US';
+      case 'sw': return 'sw_KE';
+      case 'ar': return 'ar_SA';
+      case 'es': return 'es_ES';
+      case 'fr': return 'fr_FR';
+      case 'pt': return 'pt_BR';
+      case 'hi': return 'hi_IN';
+      case 'zh': return 'zh_CN';
+      case 'ru': return 'ru_RU';
+      case 'ko': return 'ko_KR';
+      case 'de': return 'de_DE';
+      case 'th': return 'th_TH';
+      case 'vi': return 'vi_VN';
+      case 'tr': return 'tr_TR';
+      case 'id': return 'id_ID';
+      default:   return '${locale}_${locale.toUpperCase()}';
+    }
   }
 
   void _handleInitialVoiceRecorded() {
@@ -203,9 +233,15 @@ class _ConversationScreenState extends State<ConversationScreen>
   /// AI に送る `_originalInput` には markers を残し、表示だけ綺麗にする。
   String _stripInternalMarkers(String text) {
     return text
+        // 2026-05-16 以降: 英語ラッパー (現行)
+        .replaceAll(
+            'PRE-FILLED INTAKE FORM (do not re-ask any of these fields)', '')
+        .replaceAll('PRE-FILLED INTAKE FORM', '')
+        .replaceAll(
+            'Ask only for information not already provided above.', '')
+        // 旧 JA マーカー (後方互換・古いセッション/再起動データ用)
         .replaceAll('【記入済み問診票（再質問しないでください）】', '')
         .replaceAll('【上記以外で診断に必要な情報のみ質問してください】', '')
-        .replaceAll('PRE-FILLED INTAKE FORM', '')
         .replaceAll(RegExp(r'\n{3,}'), '\n\n')
         .trim();
   }
@@ -326,7 +362,7 @@ class _ConversationScreenState extends State<ConversationScreen>
   // ─── フォローアップ：音声開始 ──────────────────────────
   Future<void> _startFollowUpVoice() async {
     if (!_speechAvailable) {
-      _showSnack('Speech recognition not available / 音声認識が利用できません');
+      _showSnack('Speech recognition not available');
       return;
     }
     await _tts.stop();
@@ -354,6 +390,8 @@ class _ConversationScreenState extends State<ConversationScreen>
       ),
       pauseFor: const Duration(milliseconds: 1500),
       listenFor: const Duration(seconds: 8),
+      // ★ 2026-05-17: アプリの UI 言語で認識させる (上の _startWithVoice と同様)
+      localeId: _sttLocaleId(),
     );
   }
 
@@ -562,7 +600,7 @@ class _ConversationScreenState extends State<ConversationScreen>
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.bold)),
-                Text('対話相談 — 音声 or テキスト',
+                Text('Voice or text — switch anytime',
                     style: TextStyle(color: Colors.white54, fontSize: 13)),
               ],
             ),
@@ -573,8 +611,8 @@ class _ConversationScreenState extends State<ConversationScreen>
           if (_stage != _Stage.initialChoice)
             IconButton(
               tooltip: _ttsEnabled
-                  ? 'Disable read-aloud / 読み上げをオフ'
-                  : 'Enable read-aloud / 読み上げをオン',
+                  ? 'Disable read-aloud'
+                  : 'Enable read-aloud',
               icon: Icon(
                 _ttsEnabled ? Icons.volume_up : Icons.volume_off,
                 color: _ttsEnabled
@@ -788,7 +826,7 @@ class _ConversationScreenState extends State<ConversationScreen>
                         color: Color(0xFF00897B), size: 18),
                     SizedBox(width: 8),
                     Text(
-                      'Tap anywhere to answer now / タップして回答へ',
+                      'Tap anywhere to answer now',
                       style: TextStyle(
                           color: Color(0xFF00897B),
                           fontSize: 14,
@@ -849,7 +887,7 @@ class _ConversationScreenState extends State<ConversationScreen>
               IconButton(
                 onPressed: _startWithVoice,
                 icon: const Icon(Icons.mic, size: 26),
-                tooltip: 'Switch to voice / 音声に切替',
+                tooltip: 'Switch to voice',
                 color: const Color(0xFF1976D2),
               ),
               Expanded(
@@ -863,7 +901,7 @@ class _ConversationScreenState extends State<ConversationScreen>
                   onSubmitted: (_) => _submitInitialText(),
                   decoration: InputDecoration(
                     hintText:
-                        'e.g. stomach ache since morning / 朝からお腹が痛い',
+                        'e.g. stomach ache since this morning',
                     hintStyle: const TextStyle(
                         color: Colors.white38, fontSize: 14),
                     filled: true,
@@ -957,7 +995,7 @@ class _ConversationScreenState extends State<ConversationScreen>
               const Padding(
                 padding: EdgeInsets.only(left: 4),
                 child: Text(
-                  'Or type / 自由に入力',
+                  'Or type',
                   style: TextStyle(color: Colors.white60, fontSize: 13),
                 ),
               ),
@@ -1036,7 +1074,7 @@ class _ConversationScreenState extends State<ConversationScreen>
             textInputAction: TextInputAction.send,
             onSubmitted: (_) => _submitAnswerText(),
             decoration: InputDecoration(
-              hintText: 'Type your answer... / 回答を入力',
+              hintText: 'Type your answer...',
               hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
               filled: true,
               fillColor: const Color(0xFF1A2E45),
@@ -1083,7 +1121,7 @@ class _ConversationScreenState extends State<ConversationScreen>
             ),
           ),
           const SizedBox(height: 10),
-          const Text('Tap to speak / タップして話す',
+          const Text('Tap to speak',
               style: TextStyle(color: Colors.white70, fontSize: 14)),
         ],
       ),
@@ -1151,7 +1189,7 @@ class _ConversationScreenState extends State<ConversationScreen>
           ),
           const SizedBox(height: 12),
           const Text(
-            '話し終わったら ■ をタップ\nTap ■ when finished speaking',
+            'Tap ■ when finished speaking',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
           ),

@@ -37,6 +37,13 @@ class TranslationService extends ChangeNotifier {
   bool _isTranslating = false;
   bool get isTranslating => _isTranslating;
 
+  // ★ 2026-05-17: locale 切替で翻訳セッションを無効化する version 番号。
+  //   バグ: JA 翻訳中に SW に切替 → JA の chunk 結果が _currentLocale='sw' で
+  //   prefs.setString されて SW キャッシュに JA データが書き込まれる事象。
+  //   修正: setLocale で _localeVersion++ → ensureTranslated は開始時に
+  //   capture したバージョンと現在を比較し、ずれてたら abort。
+  int _localeVersion = 0;
+
   // ★ このセッションで一度諦めたら、再起動まで再試行しない。
   //   理由: 翻訳が裏で延々続くと推論エンジン取り合いで SIGSEGV クラッシュする。
   //   部分翻訳でユーザーには既に十分な体験が提供されている (英語フォールバック)。
@@ -54,7 +61,10 @@ class TranslationService extends ChangeNotifier {
 
   // v5: result_details_header を 'Suggested care steps' に変更
   //     → 「受診時の注意点」誤訳回避のため
-  static const _cacheKeyPrefix = 'ui_translations_v5_';
+  // v6 (2026-05-17): locale 切替の race condition で汚染されたキャッシュを
+  //     強制無効化。既存ユーザーは再翻訳が必要だが、データ整合性優先。
+  //     race fix は同 commit の _localeVersion で実装済 (両方必要)。
+  static const _cacheKeyPrefix = 'ui_translations_v6_';
   static const _localeOverrideKey = 'ui_locale_override';
 
   // ─── マスター UI 文字列（英語・このアプリで唯一の "ハードコード"） ──
@@ -310,6 +320,13 @@ class TranslationService extends ChangeNotifier {
     _isTranslating = true;
     notifyListeners();
 
+    // ★ このセッション開始時の locale + version を capture。
+    //   ループ中に setLocale で版がずれたら abort して新版に任せる。
+    final sessionLocale = _currentLocale;
+    final sessionVersion = _localeVersion;
+    debugPrint(
+        '[TranslationService] ensureTranslated start: locale=$sessionLocale version=$sessionVersion');
+
     try {
       // ⚠️ チャンクサイズの設計トレードオフ:
       //   小さい (10-20) → セッション数増 → SIGSEGV リスク + 累積時間長
@@ -326,6 +343,14 @@ class TranslationService extends ChangeNotifier {
       const maxOuterAttempts = 3;
       var lastTranslatedCount = -1;
       for (var outerAttempt = 1; outerAttempt <= maxOuterAttempts; outerAttempt++) {
+        // ★ locale 切替で abort
+        if (_localeVersion != sessionVersion) {
+          debugPrint(
+              '[TranslationService] Locale changed during translation '
+              '(was $sessionLocale v$sessionVersion, now $_currentLocale v$_localeVersion) — aborting outer loop');
+          break;
+        }
+
         // 未翻訳のキーを抽出
         final pending = allKeys.where((k) {
           final v = _translations[k];
@@ -386,16 +411,28 @@ class TranslationService extends ChangeNotifier {
             await Future.delayed(const Duration(milliseconds: 800));
           }
 
+          // ★ chunk 完了時点で locale が切り替わってたら結果を破棄
+          //   (誤って別 locale のキャッシュに書き込まないため)
+          if (_localeVersion != sessionVersion) {
+            debugPrint(
+                '[TranslationService] Locale changed during chunk '
+                '(was $sessionLocale v$sessionVersion, now $_currentLocale v$_localeVersion) — discarding chunk result');
+            break;
+          }
+
           if (chunkResult.isNotEmpty) {
             _translations.addAll(chunkResult);
             final prefs = await SharedPreferences.getInstance();
+            // ★ session 開始時の locale で保存 (途中で切替が起きても誤書き込み防止)
+            //   ↑ 上の version check で守られているのでここに到達してるなら
+            //     sessionLocale == _currentLocale だが、防御的に sessionLocale を使う
             await prefs.setString(
-              '$_cacheKeyPrefix$_currentLocale',
+              '$_cacheKeyPrefix$sessionLocale',
               jsonEncode(_translations),
             );
             debugPrint(
                 '[TranslationService] Got ${chunkResult.length}/${chunkKeys.length} keys '
-                '(total ${_translations.length}/${allKeys.length})');
+                '(total ${_translations.length}/${allKeys.length}) for "$sessionLocale"');
             notifyListeners();
           }
         }
@@ -431,6 +468,10 @@ class TranslationService extends ChangeNotifier {
   Future<void> setLocale(String code) async {
     if (code == _currentLocale) return;
     _currentLocale = code;
+    // ★ 翻訳セッションを無効化 (進行中の ensureTranslated は abort される)
+    _localeVersion++;
+    debugPrint(
+        '[TranslationService] setLocale → $code (version=$_localeVersion)');
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_localeOverrideKey, code);

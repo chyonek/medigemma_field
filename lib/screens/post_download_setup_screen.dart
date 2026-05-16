@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/screen_keep_on.dart';
 import '../services/translation_service.dart';
@@ -36,6 +37,22 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
   bool _hasError = false;
   String? _errorDetail;
 
+  // ★ 2026-05-17: Phase 1 (warmup) はプログレス取得不可なので、
+  //   ハートビート (経過秒 + アニメ済みドット) を表示して "止まってない" 感を出す。
+  //   ユーザーが「バグで止まってる?」と思って強制終了するのを防ぐ。
+  Timer? _heartbeatTimer;
+  DateTime? _warmupStartedAt;
+  int _warmupElapsedSeconds = 0;
+  // Phase 2 (翻訳) も chunk 間で時間がかかる時のために同じ仕組みを再利用。
+  DateTime? _translationStartedAt;
+  int _translationElapsedSeconds = 0;
+
+  // 想定範囲 (Pixel 6a 実測ベース)
+  static const _warmupTypicalMin = 60;
+  static const _warmupTypicalMax = 120;
+  static const _translationTypicalMin = 120;
+  static const _translationTypicalMax = 300;
+
   @override
   void initState() {
     super.initState();
@@ -44,8 +61,48 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
 
   @override
   void dispose() {
+    _heartbeatTimer?.cancel();
     ScreenKeepOn.disable().catchError((_) {});
     super.dispose();
+  }
+
+  /// 1 秒ごとに経過秒を更新して "動いてる" 感を出す
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        if (_warmupStartedAt != null && !_modelReady) {
+          _warmupElapsedSeconds =
+              DateTime.now().difference(_warmupStartedAt!).inSeconds;
+        }
+        if (_translationStartedAt != null && !_translationDone) {
+          _translationElapsedSeconds =
+              DateTime.now().difference(_translationStartedAt!).inSeconds;
+        }
+      });
+    });
+  }
+
+  String _formatElapsed(int seconds) {
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  /// 経過秒に応じた状況メッセージ。
+  /// - typical 範囲内: "Typically X–Y seconds. Just wait."
+  /// - typical 範囲超過: "Taking longer than usual. Still running, please keep the screen open."
+  String _statusFor(int elapsed, int minSec, int maxSec) {
+    if (elapsed < minSec) {
+      return 'Typically ${minSec}–${maxSec} seconds.';
+    } else if (elapsed < maxSec) {
+      return 'Almost there (typical max ${maxSec}s).';
+    } else if (elapsed < maxSec * 2) {
+      return 'Taking longer than usual — still running. Keep the screen open.';
+    } else {
+      return 'This is unusually long. Please keep waiting or restart the app if completely frozen.';
+    }
   }
 
   Future<void> _runSetup() async {
@@ -59,10 +116,15 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
       debugPrint('[PostDLSetup] wakelock enabled');
     } catch (_) {}
 
+    _startHeartbeat();
+
     try {
       // ── Phase 1: モデル初回ロード（ダミー推論で warm-up） ──
       // 「Gemma 4 を起動中…」を表示しながら、軽いプロンプトで初回 init を発火
-      setState(() => _currentStep = 'warmup');
+      setState(() {
+        _currentStep = 'warmup';
+        _warmupStartedAt = DateTime.now();
+      });
       debugPrint('[PostDLSetup] Phase 1: warming up Gemma 4...');
       await GemmaService.warmUp();
       debugPrint('[PostDLSetup] Phase 1: complete');
@@ -70,7 +132,10 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
 
       // ── Phase 2: UI 翻訳（必要な場合のみ） ──
       if (needsTranslation) {
-        setState(() => _currentStep = 'translating');
+        setState(() {
+          _currentStep = 'translating';
+          _translationStartedAt = DateTime.now();
+        });
         debugPrint('[PostDLSetup] Phase 2: translating UI...');
 
         // TranslationService の進捗を購読
@@ -99,8 +164,8 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
       // ★ Setup 完了通知（画面消灯中でもユーザーに伝わる）
       NotificationService.show(
         id: NotificationService.idSetupComplete,
-        title: 'MediGemma Field is ready! / 使用準備完了',
-        body: 'Tap to start using the app / タップして開始',
+        title: 'MediGemma Field is ready!',
+        body: 'Tap to start using the app',
       );
 
       // 軽いディレイで完了演出を見せてから遷移
@@ -138,7 +203,7 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
                     color: Color(0xFF42A5F5), size: 56),
                 const SizedBox(height: 24),
                 const Text(
-                  'Setting up AI for first use\nAI を初回起動中',
+                  'Setting up AI for first use',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       color: Colors.white,
@@ -148,8 +213,7 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'First-time setup: about 4 minutes on most phones.\n'
-                  '初回セットアップ：おおよそ 4 分かかります。',
+                  'First-time setup: about 4 minutes on most phones.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       color: Colors.white60, fontSize: 13, height: 1.5),
@@ -192,9 +256,7 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
                       SizedBox(height: 8),
                       Text(
                         '• Do NOT lock the screen\n'
-                        '• Do NOT switch to other apps\n'
-                        '• 画面をロックしないでください\n'
-                        '• 他のアプリに切り替えないでください',
+                        '• Do NOT switch to other apps',
                         textAlign: TextAlign.left,
                         style: TextStyle(
                             color: Colors.white,
@@ -209,20 +271,36 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
                 // ━━ Phase 1: モデルウォームアップ ━━
                 _phaseRow(
                   icon: Icons.memory,
-                  label: 'Loading Gemma 4 model / Gemma 4 を読み込み',
+                  label: 'Loading Gemma 4 model',
                   active: _currentStep == 'warmup' && !_modelReady,
                   done: _modelReady,
+                  // 進捗バーは出せないので elapsed + 想定範囲を出す
+                  elapsedSeconds: _currentStep == 'warmup' && !_modelReady
+                      ? _warmupElapsedSeconds
+                      : null,
+                  status: _currentStep == 'warmup' && !_modelReady
+                      ? _statusFor(_warmupElapsedSeconds,
+                          _warmupTypicalMin, _warmupTypicalMax)
+                      : null,
                 ),
                 const SizedBox(height: 16),
 
                 // ━━ Phase 2: UI 翻訳 ━━
                 _phaseRow(
                   icon: Icons.translate,
-                  label: 'Translating interface / UI を翻訳',
+                  label: 'Translating interface',
                   active: _currentStep == 'translating' && !_translationDone,
                   done: _translationDone,
                   progress: _currentStep == 'translating' && !_translationDone
                       ? _translationProgress
+                      : null,
+                  elapsedSeconds:
+                      _currentStep == 'translating' && !_translationDone
+                          ? _translationElapsedSeconds
+                          : null,
+                  status: _currentStep == 'translating' && !_translationDone
+                      ? _statusFor(_translationElapsedSeconds,
+                          _translationTypicalMin, _translationTypicalMax)
                       : null,
                 ),
 
@@ -239,7 +317,7 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
                     child: Column(
                       children: [
                         const Text(
-                          'Setup failed / セットアップ失敗',
+                          'Setup failed',
                           style: TextStyle(
                               color: Color(0xFFB71C1C),
                               fontSize: 15,
@@ -256,7 +334,7 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
                         TextButton(
                           onPressed: widget.onComplete,
                           child: const Text(
-                              'Continue anyway / そのまま続ける',
+                              'Continue anyway',
                               style: TextStyle(
                                   color: Color(0xFF42A5F5),
                                   fontSize: 13)),
@@ -279,14 +357,19 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
     required bool active,
     required bool done,
     double? progress,
+    int? elapsedSeconds,
+    String? status,
   }) {
     final color = done
         ? const Color(0xFF66BB6A)
         : active
             ? const Color(0xFF42A5F5)
             : Colors.white24;
+    // active で progress が無い場合は indeterminate のリニアバー
+    // (進捗は計れないが「動いてる」感を出す)
+    final indeterminate = active && progress == null && !done;
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
           width: 28,
@@ -308,12 +391,38 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                label,
-                style: TextStyle(
-                    color: done ? Colors.white : Colors.white70,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      // active 中はラベルにアニメドット（経過秒で 0-3 個変化）
+                      active && !done
+                          ? '$label${'.' * ((elapsedSeconds ?? 0) % 4)}'
+                          : label,
+                      style: TextStyle(
+                          color: done ? Colors.white : Colors.white70,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  // 経過時間チップ (active 中のみ)
+                  if (active && elapsedSeconds != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.white12,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        _formatElapsed(elapsedSeconds),
+                        style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            fontFeatures: [FontFeature.tabularFigures()]),
+                      ),
+                    ),
+                ],
               ),
               if (progress != null) ...[
                 const SizedBox(height: 4),
@@ -329,6 +438,26 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
                   '${(progress * 100).toInt()}%',
                   style: const TextStyle(
                       color: Colors.white54, fontSize: 11),
+                ),
+              ] else if (indeterminate) ...[
+                // determinate な % は出せないので indeterminate バーで
+                // 「処理は流れている」ことを視覚的に示す
+                const SizedBox(height: 6),
+                const LinearProgressIndicator(
+                  minHeight: 3,
+                  backgroundColor: Colors.white12,
+                  valueColor:
+                      AlwaysStoppedAnimation<Color>(Color(0xFF42A5F5)),
+                ),
+              ],
+              if (active && status != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  status,
+                  style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 11,
+                      height: 1.4),
                 ),
               ],
             ],

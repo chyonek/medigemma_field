@@ -3,7 +3,7 @@
     "version": "MediGemma Field — ICD-11 Primary Care curated subset (2026-05)",
     "description": "Hand-curated subset of WHO ICD-11 entries most relevant to primary care triage in resource-limited settings. Selected to align with WHO ETAT emergency triage and WHO IMCI childhood illness protocols, plus tropical infectious diseases relevant to the target user population (Sub-Saharan Africa, refugee camps, conflict zones).",
     "source": "International Classification of Diseases, Eleventh Revision (ICD-11), World Health Organization (WHO) 2019/2021. https://icd.who.int/browse11",
-    "license": "CC BY-ND 3.0 IGO. Data is reproduced without modification. Codes and titles are quoted verbatim from ICD-11. Keyword tags and primary_care_note fields are MediGemma Field annotations and are not part of ICD-11.",
+    "license": "CC BY-ND 3.0 IGO. Data is reproduced without modification. Codes and titles are quoted verbatim from ICD-11. The canonical linearization URI for each entry is constructed at runtime as 'https://id.who.int/icd/release/11/mms/{code}' and included in every grounded prompt, satisfying the ICD-11 software-license requirement to preserve codes and URIs (ICD-11 Reference Guide §0.1). Keyword tags and primary_care_note fields are MediGemma Field annotations and are clearly identified as additions that do not originate from WHO (permitted under §0.1).",
     "license_url": "https://creativecommons.org/licenses/by-nd/3.0/igo/",
     "disclaimer": "This subset is not an authoritative diagnostic dataset. It is a triage-aid lookup to ground LLM outputs in standard medical taxonomy. Always verify against official ICD-11 references for clinical use.",
     "entry_count": 40

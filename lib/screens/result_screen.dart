@@ -69,11 +69,11 @@ class _ResultScreenState extends State<ResultScreen> {
   String get _levelLabel {
     switch (widget.result.level) {
       case 1:
-        return 'Manage at home / 家で対処できます';
+        return 'Manage at home';
       case 3:
-        return 'Go to hospital NOW / 今すぐ病院へ';
+        return 'Go to hospital NOW';
       default:
-        return 'See a doctor soon / 数日以内に受診を';
+        return 'See a doctor soon';
     }
   }
 
@@ -121,7 +121,7 @@ class _ResultScreenState extends State<ResultScreen> {
               const Padding(
                 padding: EdgeInsets.only(bottom: 12),
                 child: Text(
-                  'Choose input mode / 入力方法を選択',
+                  'Choose input mode',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       color: Colors.white,
@@ -139,7 +139,7 @@ class _ResultScreenState extends State<ResultScreen> {
                   );
                 },
                 icon: const Icon(Icons.assignment_outlined),
-                label: const Text('問診票で / Questionnaire'),
+                label: const Text('Questionnaire'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF1565C0),
                   foregroundColor: Colors.white,
@@ -159,7 +159,7 @@ class _ResultScreenState extends State<ResultScreen> {
                   );
                 },
                 icon: const Icon(Icons.chat_bubble_outline),
-                label: const Text('対話で / Conversation'),
+                label: const Text('Conversation'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF388E3C),
                   foregroundColor: Colors.white,
@@ -171,7 +171,7 @@ class _ResultScreenState extends State<ResultScreen> {
               const SizedBox(height: 8),
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel / キャンセル',
+                child: const Text('Cancel',
                     style: TextStyle(color: Colors.white54)),
               ),
             ],
@@ -197,10 +197,10 @@ Time: $timestamp
 Category: ${exp.tag}
 Language: ${widget.result.languageCode}
 
-━━ おそらくの原因 / Likely cause ━━
+━━ Likely cause ━━
 ${exp.suspectedCause}
 
-━━ できること / What you can do ━━
+━━ What you can do ━━
 ${exp.userAction}
 
 ━━ Technical details ━━
@@ -220,7 +220,7 @@ ${exp.technicalDetails}
             SizedBox(width: 10),
             Expanded(
               child: Text(
-                'コピーしました / Copied to clipboard',
+                'Copied to clipboard',
                 style: TextStyle(color: Colors.white),
               ),
             ),
@@ -364,7 +364,7 @@ ${exp.technicalDetails}
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D1B2A),
         iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text('Error / エラー',
+        title: const Text('Error',
             style: TextStyle(color: Colors.white)),
       ),
       body: SafeArea(
@@ -392,7 +392,7 @@ ${exp.technicalDetails}
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '診断できませんでした',
+                            'Unable to provide a result',
                             style: TextStyle(
                                 color: Color(0xFFB71C1C),
                                 fontSize: 18,
@@ -430,7 +430,7 @@ ${exp.technicalDetails}
                   onPressed: () => _copyAllErrorInfo(exp),
                   icon: const Icon(Icons.copy, size: 20),
                   label: const Text(
-                    '全エラー情報をコピー / Copy full error report',
+                    'Copy full error report',
                     style:
                         TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                   ),
@@ -447,8 +447,7 @@ ${exp.technicalDetails}
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
-                    'コピー後 Claude.ai のチャットに貼り付けると診断できます\n'
-                    '(Paste into Claude.ai chat for help)',
+                    'Paste this into Claude.ai chat for help diagnosing the issue',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.white54, fontSize: 11),
                   ),
@@ -460,7 +459,7 @@ ${exp.technicalDetails}
                 onPressed: _redoTriage,
                 icon: const Icon(Icons.refresh, size: 22),
                 label: const Text(
-                  'もう一度試す / Try again',
+                  'Try again',
                   style:
                       TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
@@ -482,7 +481,7 @@ ${exp.technicalDetails}
                   foregroundColor: Colors.white60,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: const Text('ホームへ戻る / Go back to home',
+                child: const Text('Go back to home',
                     style: TextStyle(fontSize: 15)),
               ),
             ],
@@ -512,7 +511,7 @@ ${exp.technicalDetails}
                   color: Color(0xFFE65100), size: 20),
               SizedBox(width: 8),
               Text(
-                'おそらくの原因 / Likely cause',
+                'Likely cause',
                 style: TextStyle(
                     color: Color(0xFFE65100),
                     fontSize: 13,
@@ -551,7 +550,7 @@ ${exp.technicalDetails}
                   color: Color(0xFF42A5F5), size: 20),
               SizedBox(width: 8),
               Text(
-                'できること / What you can do',
+                'What you can do',
                 style: TextStyle(
                     color: Color(0xFF42A5F5),
                     fontSize: 13,
@@ -598,7 +597,7 @@ ${exp.technicalDetails}
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                '技術的詳細 / Technical details  (${exp.tag})',
+                'Technical details  (${exp.tag})',
                 style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 13,
@@ -626,7 +625,7 @@ ${exp.technicalDetails}
           ),
           const SizedBox(height: 8),
           const Text(
-            '長押しで選択・コピー（開発者に共有してください）',
+            'Long-press to select and copy (share with the developer)',
             style: TextStyle(color: Colors.white38, fontSize: 11),
           ),
         ],

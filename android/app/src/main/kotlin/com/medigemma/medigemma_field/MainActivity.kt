@@ -7,7 +7,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.RingtoneManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -95,21 +94,30 @@ class MainActivity : FlutterActivity() {
     }
 
     // ─── 通知チャンネル作成 (Android 8+ 必須) ────────────────────
+    //
+    // 設計判断 (2026-05-16):
+    //   音は鳴らさない (setSound(null, null))。理由:
+    //   - 通知音が audio focus を奪い、Spotify 等の再生中音楽を止める
+    //   - 医療セットアップの完了通知で音楽再生を妨げるのは UX 悪い
+    //   - heads-up + 振動 + ロック画面表示は維持 (視認性は十分)
+    //   IMPORTANCE_HIGH は維持 (heads-up 表示の優先度確保)。
     private fun ensureNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_ID,
             CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_HIGH  // heads-up + sound + vibration
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = CHANNEL_DESC
             enableVibration(true)
             enableLights(true)
             lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            // ★ 通知音を完全に無効化 (audio focus を奪わない)
+            setSound(null, null)
         }
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(channel)
-        Log.i(TAG, "Notification channel created: $CHANNEL_ID")
+        Log.i(TAG, "Notification channel created: $CHANNEL_ID (silent)")
     }
 
     // ─── 通知表示 (LINE 風 heads-up + lock screen 対応) ──────────
@@ -119,8 +127,15 @@ class MainActivity : FlutterActivity() {
             return
         }
         // タップで MainActivity に戻る PendingIntent
+        // ★ 2026-05-17: FLAG_ACTIVITY_CLEAR_TOP を削除。
+        //   問題: launchMode="singleTop" の Activity に CLEAR_TOP を渡すと、
+        //         既存 Activity 上の全ての activity を破棄したうえで新 intent を
+        //         配送する。これが Flutter engine の surface 切断と相まって
+        //         「通知タップ後に永続的な白画面」を引き起こす。
+        //   対策: SINGLE_TOP のみで「既存 Activity を foreground に戻す」挙動を
+        //         得る。manifest 側の launchMode="singleTop" と整合。
         val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -134,11 +149,13 @@ class MainActivity : FlutterActivity() {
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)  // heads-up (pre-Android 8)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)  // lock screen 全文
+            .setPriority(NotificationCompat.PRIORITY_HIGH)  // heads-up
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+            // ★ 音を鳴らさない (Spotify 等の audio focus を奪わない)
+            .setSound(null)
+            // 振動 + LED のみ (sound は明示的に除外)
             .setDefaults(NotificationCompat.DEFAULT_VIBRATE or NotificationCompat.DEFAULT_LIGHTS)
 
         try {

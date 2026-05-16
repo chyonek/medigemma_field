@@ -18,8 +18,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 const _modelUrl =
     'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm';
 
-// モデル ID（FileNameUtils.getBaseName で拡張子除去後の名前）
-const _modelId = 'gemma-4-E2B-it';
+// モデルファイル名 (flutter_gemma 0.15.0 の installer API で参照)
+// 注: _modelId は廃止 (flutter_gemma が拡張子込みで管理するようになった)
 const _modelFilename = 'gemma-4-E2B-it.litertlm';
 
 const _downloadDateKey = 'model_downloaded_at';
@@ -55,7 +55,7 @@ class ModelInfo {
   /// パスを「ユーザーが理解できる形式」に
   String get storageDescription {
     if (filePath == null) return '—';
-    return 'App-private storage / アプリ専用領域\n(自動削除：アプリのアンインストール時)';
+    return 'App-private storage\n(auto-deleted when the app is uninstalled)';
   }
 
   /// モデル名（Settings 画面で「使用中のモデル」を見せたい時用）

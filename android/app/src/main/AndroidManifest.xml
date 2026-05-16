@@ -59,6 +59,19 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- ★ 2026-05-17: Impeller (Vulkan) backend を無効化して Skia にフォールバック。
+             問題: Pixel 6a 含む一部端末で、Activity が背景化→復帰する際に
+                  Impeller の rendering surface 再生成が失敗し、永続的な白画面に
+                  なる事象を確認 (Flutter issue #151057 系)。
+                  通知タップ・他アプリから戻る時に頻発。
+             対策: Skia backend に切り替える。Impeller より若干遅いが、
+                  resume 時の安定性が圧倒的に良い。動画録画とデモ撮影で
+                  途中フリーズを避けるため stability を優先。
+             効果: model 推論性能には影響なし (Flutter UI rendering のみ)。 -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
+
         <!-- ★ WorkManager の SystemForegroundService に foregroundServiceType を
              明示宣言する。Android 14 (API 34) 以降は manifest 側に
              foregroundServiceType の宣言がないと、startForeground() で

@@ -77,13 +77,13 @@ class SessionService {
   /// 経過時間の表示文字列
   static String timeAgo(DateTime dt) {
     final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'Just now / たった今';
+    if (diff.inMinutes < 1) return 'Just now';
     if (diff.inMinutes < 60) {
-      return '${diff.inMinutes} min ago / ${diff.inMinutes}分前';
+      return '${diff.inMinutes} min ago';
     }
     if (diff.inHours < 24) {
-      return '${diff.inHours} h ago / ${diff.inHours}時間前';
+      return '${diff.inHours} h ago';
     }
-    return '${diff.inDays} days ago / ${diff.inDays}日前';
+    return '${diff.inDays} days ago';
   }
 }

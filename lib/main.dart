@@ -53,17 +53,22 @@ void main() async {
 /// この Future を await する。プロセス kill → 再起動の cold start でも、
 /// Flutter UI が即座に表示されて「splash で固まった」UX を回避する。
 Future<void> _bootstrapHeavyInit() async {
-  // .env は任意 (開発時の HF token のみ)。
+  // .env は任意 (開発時の HF token のみ)。本番 APK には bundle しない。
+  // dotenv.load が失敗しても続行 → ただし env アクセスは NotInitializedError を
+  // 投げるので、env 読み出しも try/catch でラップする必要がある。
+  String? hfToken;
   try {
     await dotenv.load(fileName: '.env');
+    hfToken = dotenv.env['HF_TOKEN']?.trim();
   } catch (e) {
     debugPrint('[bootstrap] .env not loaded (expected in production): $e');
+    // dotenv.env access も NotInitializedError を投げるので、ここで吸収。
+    hfToken = null;
   }
 
   // flutter_gemma 0.15.0：アプリ起動時に一度だけ初期化。
   // Gemma 4 は HF トークン不要だが、開発時に .env の HF_TOKEN があれば
   // rate limit 緩和のため使用（任意）。
-  final hfToken = dotenv.env['HF_TOKEN']?.trim();
   await FlutterGemma.initialize(
     huggingFaceToken: (hfToken != null && hfToken.isNotEmpty) ? hfToken : null,
     maxDownloadRetries: 10,
@@ -78,8 +83,37 @@ Future<void> _bootstrapHeavyInit() async {
   ]);
 }
 
-class MediGemmaApp extends StatelessWidget {
+/// 2026-05-17: AppLifecycle 監視を追加 (診断用)。
+///   背景化 → 復帰時に Flutter rendering surface が「白画面のまま」になる
+///   問題 (Impeller backend 既知バグ + Gemma 2.4GB mmap pages の
+///   userfaultfd timeout) の挙動を logcat で追えるようにする。
+///   重い処理は触らず、ライフサイクル変化を debugPrint するだけ。
+///   `adb logcat | grep Lifecycle` で resume/pause タイミングが分かる。
+class MediGemmaApp extends StatefulWidget {
   const MediGemmaApp({super.key});
+
+  @override
+  State<MediGemmaApp> createState() => _MediGemmaAppState();
+}
+
+class _MediGemmaAppState extends State<MediGemmaApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint('[Lifecycle] $state');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -129,6 +163,31 @@ class _StartupScreenState extends State<StartupScreen> {
       final navigator = Navigator.of(context);
 
       if (hasModel) {
+        // ★ Recovery routing (2026-05-16):
+        //   モデルあり・翻訳未完了 (= Post-DL Setup を完了せずにアプリ閉じた状態)
+        //   なら Post-DL Setup へ誘導する。これがないと、ユーザーが DL 完了通知を
+        //   タップしてもスプラッシュで止まる / 再起動で英語メニューが出る事象になる。
+        final translationService = TranslationService.instance;
+        final needsPostDlSetup =
+            translationService.currentLocale != 'en' &&
+                !translationService.isReady;
+
+        if (needsPostDlSetup) {
+          debugPrint(
+              '[StartupScreen] Model present but translation incomplete — '
+              'routing to Post-DL Setup for recovery');
+          navigator.pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => PostDownloadSetupScreen(
+                onComplete: () => navigator.pushReplacement(
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                ),
+              ),
+            ),
+          );
+          return;
+        }
+
         navigator.pushReplacement(
           MaterialPageRoute(builder: (_) => const HomeScreen()),
         );
@@ -328,19 +387,19 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         content: const Text(
-          'All conversation history will be cleared from this device.\n\nすべての会話履歴が端末から消去されます。',
+          'All conversation history will be cleared from this device.',
           style: TextStyle(color: Colors.white, fontSize: 15, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel / キャンセル',
+            child: const Text('Cancel',
                 style: TextStyle(color: Colors.white60, fontSize: 15)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text(
-              'Clear & Exit / 消去して終了',
+              'Clear & Exit',
               style: TextStyle(
                   color: Colors.redAccent,
                   fontSize: 15,
@@ -412,7 +471,7 @@ class _HomeScreenState extends State<HomeScreen> {
         toolbarHeight: 44,
         actions: [
           IconButton(
-            tooltip: 'Settings / 設定',
+            tooltip: 'Settings',
             icon: const Icon(Icons.settings_outlined,
                 color: Colors.white54, size: 22),
             onPressed: _openSettings,
@@ -714,7 +773,7 @@ class _OfflineModelBottomSheet extends StatelessWidget {
   final VoidCallback onDownload;
   const _OfflineModelBottomSheet({required this.onDownload});
 
-  Widget _benefit(IconData icon, String english, String local) {
+  Widget _benefit(IconData icon, String english, [String? sub]) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -731,9 +790,10 @@ class _OfflineModelBottomSheet extends StatelessWidget {
                         color: Colors.white,
                         fontSize: 15,
                         fontWeight: FontWeight.w500)),
-                Text(local,
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: 13)),
+                if (sub != null && sub.isNotEmpty)
+                  Text(sub,
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 13)),
               ],
             ),
           ),
@@ -752,7 +812,7 @@ class _OfflineModelBottomSheet extends StatelessWidget {
         children: [
           // タイトル
           const Text(
-            'AIをセットアップする / Set up AI',
+            'Set up AI',
             style: TextStyle(
                 color: Colors.white,
                 fontSize: 20,
@@ -760,8 +820,6 @@ class _OfflineModelBottomSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Gemma 4 E2B モデル（約 2.4 GB）を一度だけダウンロード。\n'
-            'その後は電波がなくても使えます。\n\n'
             'One-time download of Gemma 4 E2B model (~2.4 GB).\n'
             'Works without internet after that.',
             style: TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
@@ -769,25 +827,19 @@ class _OfflineModelBottomSheet extends StatelessWidget {
           const SizedBox(height: 20),
 
           // メリット一覧
-          _benefit(
-            Icons.wifi_off,
-            'Works without internet',
-            'ネットなしで動作',
-          ),
+          _benefit(Icons.wifi_off, 'Works without internet'),
           _benefit(
             Icons.lock_outline,
             'All data stays on your device',
-            'データが端末外に出ない（GDPR・HIPAA準拠）',
+            'GDPR / HIPAA compliant by design',
           ),
           _benefit(
             Icons.public_off,
             'Works in conflict zones & refugee camps',
-            '紛争地・難民キャンプでも使用可能',
           ),
           _benefit(
             Icons.flash_on,
             'Faster responses — no network delay',
-            'ネット遅延なし・高速回答',
           ),
 
           const SizedBox(height: 24),
@@ -799,7 +851,7 @@ class _OfflineModelBottomSheet extends StatelessWidget {
               onPressed: onDownload,
               icon: const Icon(Icons.download, size: 22),
               label: const Text(
-                'Download now / 今すぐダウンロード',
+                'Download now',
                 style:
                     TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
               ),
@@ -914,7 +966,7 @@ class _LastResultCard extends StatelessWidget {
                     color: Colors.white54, size: 15),
                 SizedBox(width: 6),
                 Text(
-                  'Tap to show your doctor / タップして医師に見せる',
+                  'Tap to show your doctor',
                   style: TextStyle(color: Colors.white54, fontSize: 13),
                 ),
               ],
@@ -960,7 +1012,7 @@ class _SetupRequiredCard extends StatelessWidget {
 
           // タイトル
           const Text(
-            'AIをセットアップしてください\nSet up the AI to get started',
+            'Set up the AI to get started',
             textAlign: TextAlign.center,
             style: TextStyle(
                 color: Colors.white,
@@ -972,8 +1024,6 @@ class _SetupRequiredCard extends StatelessWidget {
 
           // 説明（一度だけ・Wi-Fi 推奨）
           const Text(
-            'Gemma 4 E2B モデル（約 2.4 GB・Wi-Fi 推奨）を一度だけダウンロード。\n'
-            'ダウンロード後はネットなしで使えます。\n\n'
             'One-time download of Gemma 4 E2B (~2.4 GB, Wi-Fi recommended).\n'
             'Works without internet after that.',
             textAlign: TextAlign.center,
@@ -989,7 +1039,7 @@ class _SetupRequiredCard extends StatelessWidget {
               onPressed: onDownload,
               icon: const Icon(Icons.download, size: 22),
               label: const Text(
-                'Download AI / AIをダウンロード',
+                'Download AI',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(

@@ -283,10 +283,12 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
       });
 
       // DL 完了通知（画面消灯中でもユーザーに伝わる）
+      // 行動誘導型: 単に「完了」より「タップして続ける」を強調
       NotificationService.show(
         id: NotificationService.idDownloadComplete,
-        title: 'Download complete / ダウンロード完了',
-        body: 'Setting up AI now... / AI セットアップ中...',
+        title: 'Tap to continue setup',
+        body:
+            'Download done. ~3 more minutes to finish. Keep app open.',
       );
 
       debugPrint('[DL Screen] calling widget.onComplete() → navigation');
@@ -325,31 +327,25 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
         s.contains('network') ||
         s.contains('host') ||
         s.contains('connection')) {
-      return 'Connection failed. Check Wi-Fi.\n'
-          '通信エラー。Wi-Fi接続を確認してください。';
+      return 'Connection failed. Check Wi-Fi.';
     }
     if (s.contains('401') ||
         s.contains('403') ||
         s.contains('unauthor') ||
         s.contains('forbidden')) {
       return 'Access denied. The Gemma model on Hugging Face requires '
-          'license acceptance from a Hugging Face account.\n'
-          'アクセス拒否。Hugging Faceアカウントでの '
-          'ライセンス承諾が必要です。';
+          'license acceptance from a Hugging Face account.';
     }
     if (s.contains('space') ||
         s.contains('disk') ||
         s.contains('storage') ||
         s.contains('enospc')) {
-      return 'Not enough storage. Free up at least 1GB.\n'
-          'ストレージ不足。1GB以上の空き容量を確保してください。';
+      return 'Not enough storage. Free up at least 1 GB.';
     }
     if (s.contains('timeout')) {
-      return 'Download timed out. Try again on a stable Wi-Fi.\n'
-          'タイムアウト。安定したWi-Fiで再試行してください。';
+      return 'Download timed out. Try again on a stable Wi-Fi.';
     }
-    return 'Download failed. Tap retry.\n'
-        'ダウンロード失敗。再試行してください。\n($e)';
+    return 'Download failed. Tap retry.\n($e)';
   }
 
   @override
@@ -595,6 +591,7 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
 
       // ━━ 同意チェックボックス ━━
       InkWell(
+        key: const ValueKey('agree_checkbox_row'),
         onTap: () => setState(() => _termsAccepted = !_termsAccepted),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
@@ -660,6 +657,7 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
+                key: const ValueKey('download_button'),
                 onPressed: _termsAccepted ? _startDownload : null,
                 icon: const Icon(Icons.download, size: 22),
                 label: Text(
@@ -773,9 +771,7 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
             SizedBox(height: 6),
             Text(
               'Download continues in the background.\n'
-              'We\'ll show a notification when it\'s done.\n'
-              'ダウンロード中は他のアプリを使っても大丈夫です。\n'
-              '完了したら通知でお知らせします。',
+              'We\'ll show a notification when it\'s done.',
               textAlign: TextAlign.left,
               style: TextStyle(
                   color: Colors.white70, fontSize: 12, height: 1.5),
@@ -821,7 +817,7 @@ class _ModelDownloadScreenState extends State<ModelDownloadScreen> {
                   color: Color(0xFF42A5F5), size: 18),
               SizedBox(width: 8),
               Text(
-                'What will be downloaded / 何をダウンロード？',
+                'What will be downloaded?',
                 style: TextStyle(
                     color: Color(0xFF42A5F5),
                     fontSize: 13,
@@ -924,7 +920,7 @@ class _LanguagePickerSheet extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 20),
               child: Text(
-                'Choose language / 言語を選択',
+                'Choose language',
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,

@@ -57,26 +57,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
             SizedBox(width: 10),
             Expanded(
               child: Text(
-                'AIモデルを削除？\nDelete AI model?',
+                'Delete AI model?',
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ),
           ],
         ),
         content: const Text(
-          '削除すると、次にアプリを使うときに Gemma 4 E2B（約 2.4 GB）の再ダウンロードが必要になります（Wi-Fi 推奨）。\n\n'
-          'If deleted, the Gemma 4 E2B model (~2.4 GB) will need to be re-downloaded next time (Wi-Fi recommended).',
+          'If deleted, the Gemma 4 E2B model (~2.4 GB) will need to be re-downloaded next time you use the app (Wi-Fi recommended).',
           style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('キャンセル / Cancel',
+            child: const Text('Cancel',
                 style: TextStyle(color: Colors.white60)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('削除する / Delete',
+            child: const Text('Delete',
                 style: TextStyle(
                     color: Colors.redAccent, fontWeight: FontWeight.bold)),
           ),
@@ -93,7 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('AIモデルを削除しました / AI model deleted'),
+        content: Text('AI model deleted'),
         backgroundColor: Color(0xFF66BB6A),
       ),
     );
@@ -116,7 +115,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Clipboard.setData(ClipboardData(text: path));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('パスをコピー / Path copied:\n$path'),
+        content: Text('Path copied:\n$path'),
         duration: const Duration(seconds: 3),
       ),
     );
@@ -130,7 +129,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: const Color(0xFF0D1B2A),
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
-          'Settings / 設定',
+          'Settings',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
@@ -185,7 +184,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Icon(Icons.language, color: Color(0xFF42A5F5), size: 22),
               SizedBox(width: 10),
               Text(
-                'Language / 言語',
+                'Language',
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -200,7 +199,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Current / 現在',
+                    const Text('Current',
                         style: TextStyle(
                             color: Colors.white54, fontSize: 11)),
                     const SizedBox(height: 2),
@@ -216,7 +215,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: _showLanguagePicker,
                 icon:
                     const Icon(Icons.swap_horiz, color: Colors.white, size: 18),
-                label: const Text('Change / 切替',
+                label: const Text('Change',
                     style: TextStyle(color: Colors.white, fontSize: 13)),
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Colors.white24, width: 1.2),
@@ -229,13 +228,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 8),
           const Text(
             'By default the app uses your phone\'s system language. '
-            'Tap "Change" to switch to a different language at any time.\n'
-            '通常はスマホの設定言語を自動で使います。'
-            '別の言語に切り替えたいときは「切替」を押してください。\n\n'
+            'Tap "Change" to switch at any time.\n\n'
             'Changing language re-translates the UI via Gemma 4 '
-            '(may take a few minutes first time per language).\n'
-            '言語切替後、UI を Gemma 4 で再翻訳します'
-            '（言語ごとに初回のみ数分かかります）。',
+            '(takes a few minutes the first time per language).',
             style:
                 TextStyle(color: Colors.white54, fontSize: 12, height: 1.5),
           ),
@@ -271,7 +266,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text('Choose language / 言語を選択',
+                const Text('Choose language',
                     style: TextStyle(
                         color: Colors.white,
                         fontSize: 16,
@@ -350,7 +345,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: const Color(0xFF1565C0),
         duration: const Duration(seconds: 3),
         content: Text(
-          'Language changed to ${TermsL10n.nativeNames[selected]} / 言語を変更しました',
+          'Language changed to ${TermsL10n.nativeNames[selected]}',
           style: const TextStyle(color: Colors.white),
         ),
       ),
@@ -388,8 +383,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(width: 10),
               Text(
                 isDownloaded
-                    ? 'AIモデル：DL済み / Downloaded'
-                    : 'AIモデル：未DL / Not downloaded',
+                    ? 'AI model: Downloaded'
+                    : 'AI model: Not downloaded',
                 style: TextStyle(
                   color: isDownloaded
                       ? const Color(0xFF66BB6A)
@@ -403,21 +398,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (isDownloaded) ...[
             const SizedBox(height: 14),
             _infoRow(Icons.storage,
-                'サイズ / Size', info.sizeFormatted),
+                'Size', info.sizeFormatted),
             _infoRow(
-                Icons.folder_outlined, '保存場所 / Storage', info.storageDescription),
+                Icons.folder_outlined, 'Storage', info.storageDescription),
             if (info.filePath != null)
               _pathRow(info.filePath!),
             if (info.downloadedAt != null)
               _infoRow(
                 Icons.calendar_today_outlined,
-                'ダウンロード日時 / Downloaded',
+                'Downloaded',
                 _formatDate(info.downloadedAt!),
               ),
           ] else ...[
             const SizedBox(height: 8),
             const Text(
-              'アプリを使うにはダウンロードが必要です。\n'
               'You need to download the AI model to use this app.',
               style: TextStyle(
                   color: Colors.white70, fontSize: 13, height: 1.5),
@@ -471,7 +465,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('ファイルパス / Path  📋',
+                  const Text('File path  📋 (tap to copy)',
                       style: TextStyle(
                           color: Colors.white54, fontSize: 11)),
                   const SizedBox(height: 2),
@@ -516,7 +510,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: Color(0xFF66BB6A), size: 22),
               SizedBox(width: 8),
               Text(
-                'プライバシー保証 / Privacy guarantee',
+                'Privacy guarantee',
                 style: TextStyle(
                     color: Color(0xFF66BB6A),
                     fontSize: 15,
@@ -525,16 +519,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          _privacyItem('医療データはこの端末の外に出ません'),
           _privacyItem('No medical data leaves this device'),
           const SizedBox(height: 4),
-          _privacyItem('AI推論はすべて端末内で実行'),
           _privacyItem('All AI inference runs on-device'),
           const SizedBox(height: 4),
-          _privacyItem('外部サーバー・クラウドへの送信ゼロ'),
           _privacyItem('Zero transmission to external servers / cloud'),
           const SizedBox(height: 4),
-          _privacyItem('アプリ削除でモデルも自動削除'),
           _privacyItem('Model auto-deleted when app is uninstalled'),
         ],
       ),
@@ -579,7 +569,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: Colors.white70, size: 18),
               SizedBox(width: 8),
               Text(
-                'GDPR Article 17 — 削除権 / Right to erasure',
+                'GDPR Article 17 — Right to erasure',
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 13,
@@ -589,8 +579,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'EU GDPR 第17条「削除権」に基づき、ユーザーはいつでも AI モデルを削除できます。'
-            '医療データはそもそも端末外に送信されないため、サーバー側で削除すべき個人データは存在しません。\n\n'
             'Per GDPR Article 17, users may delete the AI model at any time. '
             'Medical data never leaves this device, so there is no server-side personal data to erase.',
             style: TextStyle(
@@ -613,7 +601,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: _confirmDelete,
               icon: const Icon(Icons.delete_outline),
               label: const Text(
-                'AIモデルを削除 / Delete AI model',
+                'Delete AI model',
                 style: TextStyle(fontSize: 14),
               ),
               style: OutlinedButton.styleFrom(
@@ -633,7 +621,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: _redownload,
               icon: const Icon(Icons.download),
               label: const Text(
-                'AIモデルをダウンロード / Download AI model',
+                'Download AI model',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
@@ -674,8 +662,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           SizedBox(height: 8),
           Text(
-            '本アプリは Google の Gemma モデルを使用しています。\n'
-            'Powered by Google\'s Gemma model.',
+            'Powered by Google\'s Gemma 4 model — fully on-device.',
             style: TextStyle(color: Colors.white54, fontSize: 11, height: 1.4),
           ),
         ],

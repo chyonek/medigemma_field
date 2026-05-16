@@ -211,83 +211,90 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
   String _buildOriginalInput() {
     final parts = <String>[];
 
-    // 患者ターゲット
-    parts.add(_isSelf ? '患者は本人です' : '患者は他の人（家族など）です');
+    // 患者ターゲット (AI prompt は常に英語化・患者言語は free-text で渡る)
+    parts.add(_isSelf
+        ? 'Patient: self'
+        : 'Patient: someone else (e.g. family member)');
 
     // 人口統計（任意）
     if (_ageGroup.isNotEmpty) {
       final label =
-          _ageGroups.firstWhere((x) => x.key == _ageGroup).labelJa;
-      parts.add('年齢: $label');
+          _ageGroups.firstWhere((x) => x.key == _ageGroup).labelEn;
+      parts.add('Age: $label');
     }
     if (_sex.isNotEmpty) {
-      final label = _sexChoices.firstWhere((x) => x.key == _sex).labelJa;
-      parts.add('性別: $label');
+      final label = _sexChoices.firstWhere((x) => x.key == _sex).labelEn;
+      parts.add('Sex: $label');
     }
     if (_pregnancy.isNotEmpty) {
       final label =
-          _pregnancyChoices.firstWhere((x) => x.key == _pregnancy).labelJa;
-      parts.add('妊娠の可能性: $label');
+          _pregnancyChoices.firstWhere((x) => x.key == _pregnancy).labelEn;
+      parts.add('Pregnancy possibility: $label');
     }
 
     if (_regions.isNotEmpty) {
-      final ja = _regions
+      final names = _regions
           .map((k) => _allBodyRegions
               .firstWhere((r) => r.key == k, orElse: () => _Choice(k, k, k))
-              .labelJa)
-          .join('、');
-      parts.add('部位: $ja');
+              .labelEn)
+          .join(', ');
+      parts.add('Body region: $names');
     }
+    // ★ 自由記述は患者の言語のまま残す (AI の language detection の source)
     final locationNote = _locationNoteCtrl.text.trim();
     if (locationNote.isNotEmpty) {
-      parts.add('部位の補足: $locationNote');
+      parts.add('Body region note: $locationNote');
     }
 
     if (_symptoms.isNotEmpty) {
-      final ja = _symptoms
+      final names = _symptoms
           .map((k) => _symptomChoices
               .firstWhere((x) => x.key == k, orElse: () => _Choice(k, k, k))
-              .labelJa)
-          .join('、');
-      parts.add('症状: $ja');
+              .labelEn)
+          .join(', ');
+      parts.add('Symptoms: $names');
     }
     final symptomsNote = _symptomsNoteCtrl.text.trim();
     if (symptomsNote.isNotEmpty) {
-      parts.add('症状の補足: $symptomsNote');
+      parts.add('Symptoms note: $symptomsNote');
     }
 
     if (_severity > 0) {
-      parts.add('痛みの強さ: 10段階で${_severity.toInt()}');
+      parts.add('Pain severity: ${_severity.toInt()} out of 10');
     }
     final severityNote = _severityNoteCtrl.text.trim();
     if (severityNote.isNotEmpty) {
-      parts.add('痛みの感じ: $severityNote');
+      parts.add('Pain quality note: $severityNote');
     }
 
     if (_duration.isNotEmpty) {
-      final d = _durations.firstWhere((x) => x.key == _duration).labelJa;
-      parts.add('いつから: $d');
+      final d = _durations.firstWhere((x) => x.key == _duration).labelEn;
+      parts.add('Onset: $d');
     }
     final durationNote = _durationNoteCtrl.text.trim();
     if (durationNote.isNotEmpty) {
-      parts.add('時期の補足: $durationNote');
+      parts.add('Onset note: $durationNote');
     }
 
     final extra = _additionalCtrl.text.trim();
     if (extra.isNotEmpty) {
-      parts.add('その他: $extra');
+      parts.add('Additional info: $extra');
     }
 
     if (_attachedImage != null) {
-      parts.add('（患部の写真を添付しています）');
+      parts.add('(Photo of the affected area attached)');
     }
 
     // ★ 構造化問診票の入力をすべて「確定情報」としてラップ。
     //   AI が「部位は?」「重症度は?」と再質問するのを防ぐ。
-    //   Plain text の前置きで AI に「これは答え済み」と明示する。
-    final body = parts.join('。 ');
-    return '【記入済み問診票（再質問しないでください）】\n$body\n'
-        '【上記以外で診断に必要な情報のみ質問してください】';
+    //   2026-05-16 修正: ラッパーと構造ラベルを英語化。
+    //     - AI への structural prompt は英語が最も安定 (Gemma 4 は英語 instruction-following が最強)
+    //     - 患者の自由記述は patient の言語のまま保持されるため、AI は応答言語を free-text から検出する
+    //     - 英語ラッパーでも _stripRomaji() で日本語応答に英字が混入する場合は除去される
+    //     - 旧日本語マーカーは gemma_service.dart の replaceAll で後方互換維持
+    final body = parts.join('. ');
+    return 'PRE-FILLED INTAKE FORM (do not re-ask any of these fields)\n$body\n'
+        'Ask only for information not already provided above.';
   }
 
   bool get _canSubmit =>
@@ -308,12 +315,36 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
       _imageBytes = await _attachedImage!.readAsBytes();
     }
 
+    // ★ 2026-05-17: ユーザー表示用のテキストから内部マーカー (PRE-FILLED INTAKE FORM
+    //   ラッパーや「Ask only for information not already provided above.」) を除去。
+    //   AI に送る `_originalInput` には marker を残したまま、画面 bubble は綺麗な
+    //   問診サマリだけ見せる。
+    final displayInput = _stripPromptMarkers(input);
     setState(() {
       _stage = _Stage.conversation;
-      _messages.add(_Message(text: input, isUser: true));
+      _messages.add(_Message(text: displayInput, isUser: true));
       _convState = _ConvState.analyzing;
     });
     await _runNextStep();
+  }
+
+  /// 問診票が AI に渡す内部マーカーをユーザー表示から除去する。
+  /// conversation_screen._stripInternalMarkers と同じロジック。
+  /// AI には `_originalInput` (marker 込み) を送り、表示だけクリーンに。
+  String _stripPromptMarkers(String text) {
+    return text
+        // 現行 (英語) ラッパー
+        .replaceAll(
+            'PRE-FILLED INTAKE FORM (do not re-ask any of these fields)', '')
+        .replaceAll('PRE-FILLED INTAKE FORM', '')
+        .replaceAll(
+            'Ask only for information not already provided above.', '')
+        // 旧 JA マーカー (後方互換)
+        .replaceAll('【記入済み問診票（再質問しないでください）】', '')
+        .replaceAll('【上記以外で診断に必要な情報のみ質問してください】', '')
+        // 余分な改行を圧縮
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
   }
 
   // ─── 共通：次の問診ステップ ──────────────────────────────
@@ -473,7 +504,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
                         fontSize: 18,
                         fontWeight: FontWeight.bold)),
                 Text(
-                  _stage == _Stage.form ? '問診票 / 症状を選択' : '問診結果 / 回答中',
+                  _stage == _Stage.form ? 'Select your symptoms' : 'Answering follow-up',
                   style: const TextStyle(color: Colors.white54, fontSize: 13),
                 ),
               ],
@@ -532,7 +563,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
                 _inlineNote(
                   controller: _symptomsNoteCtrl,
                   hint:
-                      'e.g. also feeling weak / 他に倦怠感もある',
+                      'e.g. also feeling weak',
                 ),
                 const SizedBox(height: 24),
 
@@ -544,7 +575,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
                 const SizedBox(height: 10),
                 _inlineNote(
                   controller: _severityNoteCtrl,
-                  hint: 'e.g. sharp / dull / burning / 鋭い・鈍い・焼ける',
+                  hint: 'e.g. sharp / dull / burning',
                 ),
                 const SizedBox(height: 24),
 
@@ -557,7 +588,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
                 _inlineNote(
                   controller: _durationNoteCtrl,
                   hint:
-                      'e.g. 3 hours ago / 3時間前から、波がある',
+                      'e.g. comes and goes every few hours',
                 ),
                 const SizedBox(height: 24),
 
@@ -985,7 +1016,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
         // 1行自由記述：場所の補足
         _inlineNote(
           controller: _locationNoteCtrl,
-          hint: 'e.g. right temple, between shoulders / 右こめかみ、肩甲骨の間',
+          hint: 'e.g. right temple, between shoulders',
         ),
       ],
     );
@@ -1281,7 +1312,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
           child: OutlinedButton.icon(
             onPressed: _takePhoto,
             icon: const Icon(Icons.camera_alt, size: 18),
-            label: const Text('Camera / カメラ'),
+            label: const Text('Camera'),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white70,
               side: const BorderSide(color: Colors.white24, width: 1.5),
@@ -1296,7 +1327,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
           child: OutlinedButton.icon(
             onPressed: _pickFromGallery,
             icon: const Icon(Icons.photo_library, size: 18),
-            label: const Text('Gallery / アルバム'),
+            label: const Text('Gallery'),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white70,
               side: const BorderSide(color: Colors.white24, width: 1.5),
@@ -1350,7 +1381,12 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
         Expanded(
           child: ListView.builder(
             controller: _scrollCtrl,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            // ★ 2026-05-17: bottom padding を厚めに取って、最新メッセージと
+            //   Quick reply パネルの境界が窮屈にならないようにする。
+            //   従来は 16dp で AI 質問のすぐ下に Quick reply が始まり、視覚的に
+            //   "被って" 見える事象があった。24dp に増やすことで余白を確保。
+            padding:
+                const EdgeInsets.fromLTRB(16, 16, 16, 24),
             itemCount: _messages.length +
                 (_convState == _ConvState.analyzing ? 1 : 0),
             itemBuilder: (_, i) {
@@ -1465,7 +1501,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
           const Padding(
             padding: EdgeInsets.only(bottom: 8, left: 4),
             child: Text(
-              'Or type your answer / 自由に回答',
+              'Or type your answer',
               style: TextStyle(color: Colors.white60, fontSize: 13),
             ),
           ),
@@ -1483,7 +1519,7 @@ class _QuestionnaireScreenState extends State<QuestionnaireScreen> {
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => _submitAnswer(),
                   decoration: InputDecoration(
-                    hintText: 'Type your answer... / 回答を入力',
+                    hintText: 'Type your answer...',
                     hintStyle: const TextStyle(
                         color: Colors.white38, fontSize: 14),
                     filled: true,

@@ -125,9 +125,6 @@ class _BodyPainter extends CustomPainter {
     return Offset(vx / 100 * size.width, vy / 220 * size.height);
   }
 
-  Color _fillFor(String key) =>
-      selected.contains(key) ? accent : const Color(0xFF2D4A6B);
-
   @override
   void paint(Canvas canvas, Size size) {
     final outline = Paint()
