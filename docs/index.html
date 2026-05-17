@@ -266,6 +266,53 @@
       font-size: 20px;
     }
 
+    /* ─── Screenshots ─────────────────────────────────── */
+    .screenshots {
+      background: #F3F6F8;
+    }
+    .screenshots h2 {
+      color: var(--teal-dark);
+    }
+    .shot-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 32px 24px;
+      max-width: 1100px;
+      margin: 40px auto 0;
+    }
+    .shot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .shot img {
+      width: 100%;
+      max-width: 240px;
+      height: auto;
+      border-radius: 22px;
+      box-shadow: 0 10px 30px rgba(15, 30, 50, 0.18);
+      border: 1px solid #E0E5EA;
+    }
+    .shot .shot-label {
+      margin-top: 14px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--charcoal);
+    }
+    .shot .shot-sub {
+      font-size: 13px;
+      color: var(--gray);
+      margin-top: 2px;
+    }
+    .shot-note {
+      margin-top: 28px;
+      font-size: 13px;
+      color: var(--gray);
+      text-align: center;
+      font-style: italic;
+    }
+
     /* ─── References ──────────────────────────────────── */
     .references {
       background: #FAFAFA;
@@ -403,6 +450,45 @@
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowfullscreen></iframe>
     </div>
+  </section>
+
+  <!-- ━━━━━ Screenshots ━━━━━ -->
+  <section class="screenshots" id="screenshots">
+    <h2>Inside the app</h2>
+    <p class="lead">Real screens from a real Android device — captured with the phone in airplane mode, while running on Gemma 4 E2B.</p>
+    <div class="shot-grid">
+      <div class="shot">
+        <img src="assets/screenshots/00_home_en.jpg" alt="MediGemma Field home screen with two entry points" />
+        <div class="shot-label">Home — two calm entry points</div>
+        <div class="shot-sub">Intake form or conversational consult</div>
+      </div>
+      <div class="shot">
+        <img src="assets/screenshots/01_home_en.jpg" alt="Patient demographics intake form" />
+        <div class="shot-label">Demographics-aware intake</div>
+        <div class="shot-sub">Age band · Sex · Pregnancy status</div>
+      </div>
+      <div class="shot">
+        <img src="assets/screenshots/05_conversation_ja.jpg" alt="Conversation in Japanese — 喉が痛くて熱があります" />
+        <div class="shot-label">Conversation — Japanese 🇯🇵</div>
+        <div class="shot-sub">"喉が痛くて熱があります" / 分析中…</div>
+      </div>
+      <div class="shot">
+        <img src="assets/screenshots/04_conversation_sw.jpg" alt="Conversation in Swahili — Koo langu linauma sana, nina homa" />
+        <div class="shot-label">Conversation — Swahili 🇰🇪</div>
+        <div class="shot-sub">"Koo langu linauma sana, nina homa"</div>
+      </div>
+      <div class="shot">
+        <img src="assets/screenshots/03_triage_en.jpg" alt="Triage result — differential conditions and care steps" />
+        <div class="shot-label">Triage result</div>
+        <div class="shot-sub">Differential conditions + care steps + read-aloud</div>
+      </div>
+      <div class="shot">
+        <img src="assets/screenshots/06_photo_result.jpg" alt="Photo input triage — Skin Ulcer, Level 2, see a doctor soon" />
+        <div class="shot-label">Photo input · Level 2</div>
+        <div class="shot-sub">Skin ulcer recognised on-device</div>
+      </div>
+    </div>
+    <p class="shot-note">Captured on Google Pixel 6a. Airplane-mode icon visible in every status bar.</p>
   </section>
 
   <!-- ━━━━━ Features ━━━━━ -->
