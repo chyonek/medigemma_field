@@ -23,15 +23,26 @@ enum _Stage {
 enum _InputMode { text, voice }
 
 class _Message {
+  static int _nextId = 0;
+  // ★ 2026-05-17: 安定 key 用のユニーク ID。
+  //   text.hashCode ベースの key だと同文 (Yes/No) で衝突 → bubble state
+  //   が予期せず再生成され past message の slide/typewriter が再走する
+  //   問題への対策。
+  final int id;
   final String text;
   final bool isUser;
   // AI 応答を「ChatGPT 風」に1文字ずつ表示するか
   final bool typewriter;
-  const _Message({
+  // ★ 2026-05-17: 作成時刻を保持。bubble が「新しい」かを判定して、
+  //   古い bubble の slide/fade アニメーションをスキップ → 「過去 bubble が
+  //   再アニメーションして見える」UX 問題への決定打。
+  final DateTime createdAt;
+  _Message({
     required this.text,
     required this.isUser,
     this.typewriter = false,
-  });
+  })  : id = _nextId++,
+        createdAt = DateTime.now();
 }
 
 class ConversationScreen extends StatefulWidget {
@@ -144,6 +155,11 @@ class _ConversationScreenState extends State<ConversationScreen>
       _showSnack('Speech recognition not available');
       return;
     }
+    // ★ 2026-05-17: 端末側に該当 locale の STT データが入っていない場合、
+    //   listen() は無音タイムアウトするだけで何も認識しない事象を確認
+    //   (例: Pixel に Japanese voice 入力データ未 DL の状態)。
+    //   事前にチェックして user に通知。
+    if (!await _ensureSttLocaleAvailable()) return;
     setState(() {
       _stage = _Stage.voiceListening;
       _voiceTranscribed = '';
@@ -154,7 +170,18 @@ class _ConversationScreenState extends State<ConversationScreen>
       onResult: (r) {
         if (!mounted) return;
         setState(() => _voiceTranscribed = r.recognizedWords);
-        if (r.finalResult) _handleInitialVoiceRecorded();
+        if (r.finalResult) {
+          // ★ 2026-05-17: 「子供」だけで finalResult が早期発火される問題
+          //   への対策。CJK 等で 4 文字未満の最初の結果は誤検知の可能性が
+          //   高いため、ユーザーの明示停止を待つ (再開はしない・listenFor で
+          //   自然終了させる)。
+          if (_voiceTranscribed.characters.length < 4) {
+            debugPrint('[STT] early finalResult ignored: "$_voiceTranscribed" '
+                '(${_voiceTranscribed.characters.length} chars)');
+            return;
+          }
+          _handleInitialVoiceRecorded();
+        }
       },
       // 初期症状入力は長めに話す可能性があるため dictation
       listenOptions: SpeechListenOptions(
@@ -162,7 +189,9 @@ class _ConversationScreenState extends State<ConversationScreen>
         partialResults: true,
         cancelOnError: true,
       ),
-      pauseFor: const Duration(milliseconds: 1500),
+      // ★ 2026-05-17: 1500ms は日本語の自然な間 (主語/助詞の後) で誤発火
+      //   するため 2500ms に延長。
+      pauseFor: const Duration(milliseconds: 2500),
       listenFor: const Duration(seconds: 30),
       // ★ 2026-05-17: 端末システム言語に依らず、アプリの UI 言語で認識させる。
       //   UI を日本語にした user が端末 system locale = en_US の場合、
@@ -194,6 +223,88 @@ class _ConversationScreenState extends State<ConversationScreen>
       case 'tr': return 'tr_TR';
       case 'id': return 'id_ID';
       default:   return '${locale}_${locale.toUpperCase()}';
+    }
+  }
+
+  /// 端末側に現在 locale の STT データが存在するか確認。
+  /// 無ければ snack で user に通知して false を返す。
+  /// Pixel に Japanese 等の voice 入力データが未 DL の場合、listen() は
+  /// 無音タイムアウトするだけで何も認識しない (silent failure)。
+  Future<bool> _ensureSttLocaleAvailable() async {
+    final want = _sttLocaleId();
+    try {
+      final available = await _speech.locales();
+      final wantLower = want.toLowerCase();
+      final wantLang = wantLower.split('_').first;
+      final hit = available.any((l) {
+        final id = l.localeId.toLowerCase().replaceAll('-', '_');
+        return id == wantLower || id.startsWith('${wantLang}_');
+      });
+      debugPrint('[STT] want=$want, available count=${available.length}, hit=$hit');
+      if (!hit) {
+        _showSnack(
+            'Voice input for ${_friendlyLangName(wantLang)} is not installed '
+            'on this phone. Install via Settings → System → Languages & input '
+            '→ Speech → Voice typing → Languages, or switch to text input.');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[STT] locales() failed: $e — proceeding anyway');
+      return true; // ベストエフォートで続行
+    }
+  }
+
+  /// 2 文字 ISO 639 code → BCP-47 region 付き (TTS 用・ハイフン区切り)。
+  /// flutter_tts は ハイフン区切りを期待 (e.g. 'ja-JP')。
+  /// 2 文字単独だと Android TTS が誤った voice (中国語等) に
+  /// フォールバックする事象を 2026-05-17 確認 → 必ず region 付与。
+  String _ttsBcp47(String langCode) {
+    if (langCode.contains('-')) return langCode; // 既に region 付き
+    switch (langCode.toLowerCase()) {
+      case 'ja': return 'ja-JP';
+      case 'en': return 'en-US';
+      case 'sw': return 'sw-KE';
+      case 'ar': return 'ar-SA';
+      case 'es': return 'es-ES';
+      case 'fr': return 'fr-FR';
+      case 'pt': return 'pt-BR';
+      case 'hi': return 'hi-IN';
+      case 'zh': return 'zh-CN';
+      case 'ru': return 'ru-RU';
+      case 'ko': return 'ko-KR';
+      case 'de': return 'de-DE';
+      case 'th': return 'th-TH';
+      case 'vi': return 'vi-VN';
+      case 'tr': return 'tr-TR';
+      case 'id': return 'id-ID';
+      case 'it': return 'it-IT';
+      case 'nl': return 'nl-NL';
+      case 'pl': return 'pl-PL';
+      case 'uk': return 'uk-UA';
+      case 'fa': return 'fa-IR';
+      case 'ur': return 'ur-PK';
+      case 'bn': return 'bn-BD';
+      default:   return '$langCode-${langCode.toUpperCase()}';
+    }
+  }
+
+  /// UI 表示用の言語名 (snack message で使う)
+  String _friendlyLangName(String langCode) {
+    switch (langCode.toLowerCase()) {
+      case 'ja': return 'Japanese';
+      case 'en': return 'English';
+      case 'sw': return 'Swahili';
+      case 'ar': return 'Arabic';
+      case 'es': return 'Spanish';
+      case 'fr': return 'French';
+      case 'pt': return 'Portuguese';
+      case 'hi': return 'Hindi';
+      case 'zh': return 'Chinese';
+      case 'ru': return 'Russian';
+      case 'ko': return 'Korean';
+      case 'de': return 'German';
+      default:   return langCode;
     }
   }
 
@@ -291,7 +402,10 @@ class _ConversationScreenState extends State<ConversationScreen>
   }
 
   Future<void> _speakQuestion(String text, String langCode) async {
-    final ttsLang = langCode == 'ar' ? 'ar-SA' : langCode;
+    // ★ 2026-05-17: 2 文字 ISO code (e.g. 'ja') では Android TTS が
+    //   Chinese voice にフォールバックする事象を確認。BCP-47 region 付き
+    //   (e.g. 'ja-JP') を必ず渡す。
+    final ttsLang = _ttsBcp47(langCode);
 
     // ★ Android の TTS エンジンは Japanese を要求しても Chinese 音声が
     //   流れることがある (CJK 漢字を Chinese voice で読み上げてしまう)。
@@ -305,31 +419,60 @@ class _ConversationScreenState extends State<ConversationScreen>
         // 利用可能な voice の中から目的言語に一致するものを探して固定
         final voices = await _tts.getVoices;
         if (voices is List) {
-          final langPrefix = ttsLang.split('-').first;
-          final matched = voices.firstWhere(
-            (v) {
-              if (v is! Map) return false;
-              final locale = (v['locale'] ?? '').toString().toLowerCase();
-              return locale == ttsLang.toLowerCase() ||
-                  locale.startsWith('$langPrefix-') ||
-                  locale.startsWith(langPrefix);
-            },
-            orElse: () => null,
-          );
-          if (matched != null && matched is Map) {
-            await _tts.setVoice({
-              'name': matched['name']?.toString() ?? '',
-              'locale': matched['locale']?.toString() ?? ttsLang,
-            });
-            debugPrint('[TTS] pinned voice: ${matched['name']} (${matched['locale']})');
+          // ★ 2026-05-17: 厳格 voice matching + 診断ログ。
+          //   従来: locale.startsWith('ja') が 'jam' 等にも一致 + Chinese
+          //   voice にフォールバックされる問題。
+          //   修正: ハイフン/アンダースコア両対応 + region prefix 必須
+          //   ('ja-' or 'ja_')。region 無しの曖昧マッチを禁止。
+          final langPrefix = ttsLang.split('-').first.toLowerCase();
+          // 全 voice をログ出力 (該当言語のみ)
+          final matchingVoices = voices.where((v) {
+            if (v is! Map) return false;
+            final loc = (v['locale'] ?? '').toString().toLowerCase()
+                .replaceAll('_', '-');
+            return loc == ttsLang.toLowerCase() || loc.startsWith('$langPrefix-');
+          }).toList();
+          debugPrint('[TTS] candidate voices for "$langPrefix": '
+              '${matchingVoices.map((v) => '${(v as Map)['name']}(${v['locale']})').join(", ")}');
+
+          if (matchingVoices.isEmpty) {
+            // 該当言語の voice 自体が無い → speak しない (中国語フォールバック防止)
+            debugPrint('[TTS] no voice found for "$langPrefix" — skipping speak()');
+            if (mounted) {
+              _showSnack(
+                  'Voice for ${_friendlyLangName(langCode)} not installed. '
+                  'Install via Settings → Languages & input → Text-to-speech.');
+              if (_stage == _Stage.ttsReading) {
+                setState(() => _stage = _Stage.followUpInput);
+              }
+            }
+            return;
           }
+
+          // exact locale 優先、無ければ最初の matching voice
+          final matched = matchingVoices.firstWhere(
+            (v) => ((v as Map)['locale'] ?? '').toString().toLowerCase()
+                .replaceAll('_', '-') == ttsLang.toLowerCase(),
+            orElse: () => matchingVoices.first,
+          ) as Map;
+          await _tts.setVoice({
+            'name': matched['name']?.toString() ?? '',
+            'locale': matched['locale']?.toString() ?? ttsLang,
+          });
+          debugPrint('[TTS] pinned voice: ${matched['name']} (${matched['locale']})');
         }
       } else {
         debugPrint('[TTS] WARN: $ttsLang not available — TTS may fall back '
             'to a different language. Skip speak() to avoid wrong-language audio.');
         // 言語が無い → 読み上げスキップ (中国語混入を防ぐ)
-        if (mounted && _stage == _Stage.ttsReading) {
-          setState(() => _stage = _Stage.followUpInput);
+        if (mounted) {
+          _showSnack(
+              'Text-to-speech for ${_friendlyLangName(langCode)} is not '
+              'installed. Install via Settings → System → Languages → '
+              'Text-to-speech.');
+          if (_stage == _Stage.ttsReading) {
+            setState(() => _stage = _Stage.followUpInput);
+          }
         }
         return;
       }
@@ -365,6 +508,8 @@ class _ConversationScreenState extends State<ConversationScreen>
       _showSnack('Speech recognition not available');
       return;
     }
+    // ★ 2026-05-17: 端末側 STT locale 利用可能性チェック (silent failure 防止)
+    if (!await _ensureSttLocaleAvailable()) return;
     await _tts.stop();
     setState(() {
       _stage = _Stage.followUpVoice;
@@ -372,7 +517,7 @@ class _ConversationScreenState extends State<ConversationScreen>
     });
     // ★ Android の confirmation モードは短答 ("5", "はい" 等) で finalResult を
     //   発火しないことがある (実機検証で確認)。dictation モードに切替し、
-    //   pauseFor を短く (1.5s silence で auto-stop)、listenFor も短くする。
+    //   pauseFor を短く (silence で auto-stop)、listenFor も短くする。
     //   さらに手動停止時に最後の partial result を採用するよう defensively 改修。
     await _speech.listen(
       onResult: (r) {
@@ -388,8 +533,10 @@ class _ConversationScreenState extends State<ConversationScreen>
         partialResults: true,
         cancelOnError: true,
       ),
-      pauseFor: const Duration(milliseconds: 1500),
-      listenFor: const Duration(seconds: 8),
+      // ★ 2026-05-17: 1500ms → 2000ms (日本語助詞のあとの自然な間で誤発火回避)。
+      //   フォローアップは短答想定 (はい/いいえ) なので 8s でタイムアウト維持。
+      pauseFor: const Duration(milliseconds: 2000),
+      listenFor: const Duration(seconds: 10),
       // ★ 2026-05-17: アプリの UI 言語で認識させる (上の _startWithVoice と同様)
       localeId: _sttLocaleId(),
     );
@@ -776,8 +923,15 @@ class _ConversationScreenState extends State<ConversationScreen>
     final hasQuickReplies = _quickReplies != null &&
         _quickReplies!.isNotEmpty &&
         (_stage == _Stage.followUpInput || _stage == _Stage.followUpVoice);
+    // ★ 2026-05-17 v3: v2 で過剰補正していたのを修正。
+    //   Column[Expanded(ListView), InputArea] レイアウトでは chips と messages は
+    //   物理的に別 Widget で分離 → ListView 内の bottom padding は単なる「視覚的
+    //   gap」用途で十分 (40px もあれば AI bubble bottom が chip area 直上から
+    //   程よく離れて見える)。
+    //   v2 では 180+chipRows*56 = 最大 400+ px の余白を入れていた → 過剰で
+    //   メッセージが画面上方に押し上げられキーボードを下げないと見えなかった。
     final extraBottomPadding =
-        (bottomInset > 0 ? 8.0 : 0.0) + (hasQuickReplies ? 80.0 : 0.0);
+        (bottomInset > 0 ? 8.0 : 0.0) + (hasQuickReplies ? 40.0 : 0.0);
 
     final content = ListView.builder(
       controller: _scrollCtrl,
@@ -790,8 +944,16 @@ class _ConversationScreenState extends State<ConversationScreen>
         //   再起動されてしまう (text + isUser の組合せでメッセージを識別)。
         final m = _messages[i];
         return _MessageBubble(
-          key: ValueKey('msg_${i}_${m.isUser}_${m.text.hashCode}'),
+          key: ValueKey('msg_${m.id}'),
           message: m,
+          onTypewriterTick: i == _messages.length - 1
+              ? () {
+                  // 最新 bubble の typewriter 進行に合わせて scroll
+                  if (_scrollCtrl.hasClients) {
+                    _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+                  }
+                }
+              : null,
         );
       },
     );
@@ -1268,7 +1430,10 @@ class _ConversationScreenState extends State<ConversationScreen>
 // ─── メッセージバブル ──────────────────────────────────────
 class _MessageBubble extends StatefulWidget {
   final _Message message;
-  const _MessageBubble({super.key, required this.message});
+  // ★ 2026-05-17: typewriter 進行で bubble が伸びる際、親 ListView に
+  //   scroll-to-bottom を要求するコールバック。chip area との overlap 解消。
+  final VoidCallback? onTypewriterTick;
+  const _MessageBubble({super.key, required this.message, this.onTypewriterTick});
 
   @override
   State<_MessageBubble> createState() => _MessageBubbleState();
@@ -1297,7 +1462,16 @@ class _MessageBubbleState extends State<_MessageBubble>
           : const Offset(-0.15, 0),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
-    _ctrl.forward();
+
+    // ★ 2026-05-17: 作成後 1.5 秒以上経った bubble は entry アニメを
+    //   完全 skip (forward 完了状態で開始) → 古い bubble が「再描画」
+    //   されて見える残骸を物理的に排除。
+    final age = DateTime.now().difference(widget.message.createdAt);
+    if (age > const Duration(milliseconds: 1500)) {
+      _ctrl.value = 1.0; // 即終了状態 (slide 完了・opacity 1.0)
+    } else {
+      _ctrl.forward();
+    }
 
     if (widget.message.typewriter) {
       // 1文字 ≈ 28ms で reveal（短文 0.5秒〜長文 3秒くらい）
@@ -1309,7 +1483,16 @@ class _MessageBubbleState extends State<_MessageBubble>
       _typeAnim = IntTween(begin: 0, end: charCount).animate(
         CurvedAnimation(parent: _typeCtrl!, curve: Curves.easeOut),
       );
-      _typeCtrl!.forward();
+      // ★ 古い bubble は typewriter も skip (再生成時に再走しない)
+      if (age > const Duration(milliseconds: 1500)) {
+        _typeCtrl!.value = 1.0;
+      } else {
+        // ★ typewriter 進行中、bubble height が変わるたびに親に scroll 要求
+        _typeAnim!.addListener(() {
+          widget.onTypewriterTick?.call();
+        });
+        _typeCtrl!.forward();
+      }
     }
   }
 

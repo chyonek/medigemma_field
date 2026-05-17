@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'icd_service.dart';
@@ -58,15 +59,24 @@ R1. Ask ONE focused question about the topic in INSTRUCTION. Nothing else.
 
 R2. If INSTRUCTION says "produce TRIAGE" → output TYPE: TRIAGE in the format below.
 
-R3. QUICK_REPLIES must be valid answers to YOUR question, IN THE PATIENT'S LANGUAGE:
-    - yes/no → "Yes | No | Not sure"
-    - severity 0-10 → "1-3 mild | 4-6 moderate | 7-10 severe"
-    - factual choices → concrete short options (3-6 items, each ≤10 chars)
+R3. QUICK_REPLIES must be valid answers to YOUR question, IN THE PATIENT'S LANGUAGE.
+    NEVER mix languages. If the patient writes in Japanese, every option must be Japanese
+    (e.g. "はい | いいえ | わからない"), not "Yes | No | Not sure". Same for any other language.
+    - yes/no: use the patient-language equivalents of Yes/No/Not sure
+    - severity 0-10: "1-3 mild | 4-6 moderate | 7-10 severe" — translate the words
+    - factual choices: concrete short options (3-6 items, each ≤10 chars)
 
-R4. Briefly acknowledge the most recent prior answer (e.g. "Since yesterday, got it.") then ask.
+R4. Your QUESTION must ALWAYS start with a brief acknowledgment of what the patient just shared, then ask the new question on the same line. Format: "<acknowledgment>. <question>" or "<acknowledgment> — <question>".
+    - First turn: acknowledge the initial complaint (e.g. "I see, fever — how high is the temperature?")
+    - Subsequent turns: acknowledge the previous answer (e.g. "Since yesterday, got it. Does it hurt when swallowing?")
+    - For DRILL_* topics: explicitly acknowledge the symptom they mentioned (e.g. "熱があるんですね、何度くらいですか?" / "I see you have a cough — is it dry or wet?")
+    - Never start a question cold without acknowledgment.
 
-R5. NEVER output "TOPICS_*", "KNOWN FACTS:", or other meta-blocks in your response.
-    Output ONLY the TYPE: FOLLOWUP or TYPE: TRIAGE format below.
+R5. NEVER output "TOPICS_*", "KNOWN FACTS:", "【記入済み問診票】", any intake-form
+    echo, or any other meta-blocks in your response. After "DISCLAIMER:" line,
+    STOP — no second DISCLAIMER, no "---" separators, no follow-up notes.
+    Output ONLY the TYPE: FOLLOWUP or TYPE: TRIAGE format below, end with the
+    single DISCLAIMER line.
 </CORE_RULES>
 
 <INTAKE_AND_GROUNDING>
@@ -112,6 +122,26 @@ QUESTION: Since yesterday, got it. Does it hurt especially when swallowing?
 QUICK_REPLIES: Yes | No | Not sure
 </EXAMPLE>
 
+<EXAMPLE label="good_drill_followup_japanese">
+Prior: "子供が熱を出した" Instruction: DRILL_FEVER → Output:
+TYPE: FOLLOWUP
+QUESTION: 熱があるんですね、何度くらいですか?
+QUICK_REPLIES: 38度未満 | 38-39度 | 39度以上 | 測ってない
+</EXAMPLE>
+
+<EXAMPLE label="good_drill_followup_english">
+Prior: "My child has a fever" Instruction: DRILL_FEVER → Output:
+TYPE: FOLLOWUP
+QUESTION: I see, fever — how high is the temperature?
+QUICK_REPLIES: under 100°F | 100-102°F | 102°F+ | not measured
+</EXAMPLE>
+
+<ANTI_EXAMPLE label="cold_question_no_acknowledgment">
+Prior: "子供が熱を出した" → BAD output: "熱はどれくらいですか" (no acknowledgment).
+GOOD: "熱があるんですね、どれくらいですか?" or "熱が出ているんですね — 何度ですか?"
+WHY: R4 requires acknowledgment first.
+</ANTI_EXAMPLE>
+
 <EXAMPLE label="good_triage">
 TYPE: TRIAGE
 LEVEL: 2
@@ -146,22 +176,107 @@ GOOD: pick a NEW dimension. e.g. "Does it hurt when swallowing?" QUICK_REPLIES "
 /// 日本語 / 英語両方の表現を見て、答えに「ない/なし/no/わからない」が含まれる場合も
 /// 「topic は closed (もう聞かない)」として扱う。
 const _topicCodes = {
-  'ONSET': ['いつから', '何時間前', '何日前', 'onset', 'when did', 'how long ago'],
-  'SEVERITY': ['痛みの強さ', '10段階', 'severity', 'how strong', 'how painful', 'scale of'],
-  'REGION': ['部位', '場所', 'region', 'where', 'which part'],
-  'CHIEF_SYMPTOM': ['症状:', 'symptom:'],
-  'AGE': ['年齢:', 'age:', '歳'],
-  'SEX': ['性別:', 'sex:'],
-  'PREGNANCY': ['妊娠', 'pregnan'],
-  'QUALITY': ['どんな感じ', 'どんな痛み', '鈍い', '鋭い', '焼ける', 'quality', 'sharp', 'dull', 'burning'],
-  'TRIGGERS': ['何で悪化', '悪化する', 'triggers', 'worse when'],
-  'RELIEF': ['楽になる', '和らぐ', 'relief', 'better when'],
-  'ASSOCIATED_FEVER': ['熱はあり', '発熱', 'fever'],
-  'ASSOCIATED_COUGH': ['咳', 'cough'],
-  'ASSOCIATED_NAUSEA': ['吐き気', '嘔吐', 'nausea', 'vomit'],
-  'ASSOCIATED_HEADACHE': ['頭痛', 'headache'],
-  'ASSOCIATED_BREATHING': ['呼吸', '息苦', 'breath'],
-  'ASSOCIATED_SWALLOWING': ['飲み込', '嚥下', 'swallow'],
+  // ★ 2026-05-17: 全 topic を JA/EN/ES/FR/PT/AR に拡張 (Gemma fallback 強化)
+  'ONSET': [
+    'いつから', '何時間前', '何日前', '昨日', '今日', '一週間前',
+    'onset', 'when did', 'how long ago', 'since', 'started', 'began',
+    'days ago', 'hours ago', 'yesterday',
+    'desde', 'hace',          // ES
+    'depuis', 'il y a',       // FR
+    'desde', 'há',            // PT
+    'منذ',                    // AR
+  ],
+  'SEVERITY': [
+    '痛みの強さ', '10段階', 'とても', '激しい', '我慢できない', '軽い', '強い', '弱い',
+    'severity', 'how strong', 'how painful', 'scale of',
+    'severe', 'mild', 'unbearable', 'agonizing', 'intense',
+    'severo', 'leve', 'fuerte', 'intenso', // ES
+    'sévère', 'léger', 'intense', // FR
+    'severo', 'leve', 'forte', 'intenso', // PT
+    'شديد', 'خفيف',           // AR
+    // 数値温度 (39度, 102°F, 39.5℃ など) — 任意の数字+度を曖昧マッチ
+    '度', '℃', '°C', '°F', 'degrees',
+  ],
+  'REGION': ['部位', '場所', 'region', 'where', 'which part', 'área', 'zone', 'área'],
+  'CHIEF_SYMPTOM': ['症状:', 'symptom:', 'síntoma:', 'symptôme:', 'sintoma:'],
+  'AGE': ['年齢:', 'age:', '歳', 'edad:', 'âge:', 'idade:'],
+  'SEX': ['性別:', 'sex:', 'sexo:', 'sexe:'],
+  'PREGNANCY': ['妊娠', 'pregnan', 'embaraz', 'enceinte', 'grávid'],
+  'QUALITY': [
+    'どんな感じ', 'どんな痛み', '鈍い', '鋭い', '焼ける', 'ズキズキ', 'シクシク', 'チクチク',
+    'quality', 'sharp', 'dull', 'burning', 'throbbing', 'cramping', 'stabbing',
+    'agudo', 'sordo',         // ES
+    'aigu', 'sourd',          // FR
+    'agudo', 'maçante',       // PT
+  ],
+  'TRIGGERS': [
+    '何で悪化', '悪化する', '動くと', '食べると',
+    'triggers', 'worse when', 'worsen', 'aggravat',
+    'empeora con',            // ES
+    'aggrave',                // FR
+    'piora com',              // PT
+  ],
+  'RELIEF': [
+    '楽になる', '和らぐ', '休むと', '冷やすと',
+    'relief', 'better when', 'improves with', 'eases',
+    'mejora con',             // ES
+    'soulage',                // FR
+    'melhora com',            // PT
+  ],
+  // ★ 2026-05-17: キーワード網羅性を強化 (semantic 抽出失敗時の fallback)。
+  //   主要 5 言語 (JA / EN / ES / FR / PT) の小文字含むよう。
+  //   substring 一致なので部分マッチ・活用形・カナ・他言語混入すべてカバー。
+  //   Note: 通常は _extractTopicsSemantically が Gemma で抽出するので
+  //         このキーワード版は fallback。
+  'ASSOCIATED_FEVER': [
+    '熱', '発熱', '高熱', 'ねつ',
+    'fever', 'feverish', 'pyrexia', 'high temp', 'hot body',
+    'fiebre', 'febril',      // ES
+    'fièvre',                 // FR
+    'febre',                  // PT
+    'حمى',                    // AR
+  ],
+  'ASSOCIATED_COUGH': [
+    '咳', 'せき', 'コホン',
+    'cough', 'coughing', 'hacking',
+    'tos',                    // ES
+    'toux',                   // FR
+    'tosse',                  // PT
+    'سعال',                   // AR
+  ],
+  'ASSOCIATED_NAUSEA': [
+    '吐き気', '嘔吐', 'はきけ', 'おうと', 'むかむか',
+    'nausea', 'vomit', 'throw up', 'queasy', 'sick to stomach',
+    'náusea', 'vómito',       // ES
+    'nausée', 'vomir',        // FR
+    'náusea', 'vômito',       // PT
+    'غثيان',                  // AR
+  ],
+  'ASSOCIATED_HEADACHE': [
+    '頭痛', '頭が痛', 'ずつう',
+    'headache', 'head pain', 'head ache', 'migraine',
+    'dolor de cabeza', 'cefalea', // ES
+    'mal de tête',            // FR
+    'dor de cabeça',          // PT
+    'صداع',                   // AR
+  ],
+  'ASSOCIATED_BREATHING': [
+    '呼吸', '息苦', '息ができ', '息切れ', 'ぜいぜい', 'ハァハァ',
+    'breath', 'breathing', 'short of breath', 'wheez', 'dyspnea',
+    'cannot breathe', 'hard to breathe',
+    'falta de aire', 'disnea', // ES
+    'essoufflement',          // FR
+    'falta de ar',            // PT
+    'ضيق التنفس',             // AR
+  ],
+  'ASSOCIATED_SWALLOWING': [
+    '飲み込', '嚥下', '飲めない', '食べられ',
+    'swallow', 'dysphagia',
+    'tragar',                 // ES
+    'avaler',                 // FR
+    'engolir',                // PT
+    'بلع',                    // AR
+  ],
   'ASSOCIATED_OTHER_SYMPTOMS': ['他に症状', 'ほかに症状', '他に何か', 'other symptoms', 'anything else'],
   'RED_FLAGS': ['緊急', 'red flag', 'emergency'],
   'MEDICAL_HISTORY': ['既往', '持病', '過去の病気', 'history'],
@@ -170,6 +285,85 @@ const _topicCodes = {
 /// 与えられたテキスト (intake form 文字列 or Q&A の Q/A) から「このテキストが
 /// 触れているトピックコード」を抽出する。否定回答 ("ない/なし/no/わからない")
 /// でも topic は CLOSED とする (R2 negative-answer rule)。
+// ★ 2026-05-17: 意味的 topic 抽出キャッシュ。
+//   1 セッション (= 1 chief complaint) につき 1 回だけ Gemma 推論する。
+//   key = chief complaint の hash。
+final Map<int, Set<String>> _semanticTopicCache = {};
+
+/// Gemma に意味抽出させる版の topic 抽出。
+/// 利点:
+///   - 活用形・口語・略語に対応 (「熱を出した」「すごく熱い」「fever since yesterday」)
+///   - 140 言語対応 (Gemma が直接理解)
+///   - 長文 (「昨日から熱があって咳もあって…」) も自然に対応
+/// オーバーヘッド: 初回ターン +3-5 秒、以降キャッシュで 0 秒。
+Future<Set<String>> _extractTopicsSemantically(String original) async {
+  final key = original.hashCode;
+  if (_semanticTopicCache.containsKey(key)) {
+    return _semanticTopicCache[key]!;
+  }
+
+  // Gemma が使えないときはキーワード版にフォールバック
+  final hasModel = await ModelService.isModelDownloaded();
+  if (!hasModel) {
+    final fallback = _extractTopicsFromText(original);
+    _semanticTopicCache[key] = fallback;
+    return fallback;
+  }
+
+  const prompt = '''
+You are a medical NLP extractor. The patient (or their caregiver) wrote the
+complaint below. List which of these TOPICS are ALREADY mentioned or clearly
+implied in the complaint. Be liberal — if the user even hints at the topic
+(in any language, any phrasing, including casual or inflected forms), include
+it. Do NOT include topics that are NOT mentioned.
+
+TOPICS (return only those present):
+- ASSOCIATED_FEVER: any mention of fever, raised body temperature, hot body, feverish, e.g. "熱", "fever", "fiebre", "حمى", "39℃"
+- ASSOCIATED_COUGH: any mention of cough, coughing, hacking
+- ASSOCIATED_NAUSEA: nausea, vomiting, throwing up, queasy, "むかむか"
+- ASSOCIATED_HEADACHE: headache, head pain, throbbing head
+- ASSOCIATED_BREATHING: shortness of breath, wheezing, dyspnea, hard to breathe, gasping, "息苦しい"
+- ASSOCIATED_SWALLOWING: difficulty swallowing, dysphagia, painful to swallow
+- ONSET: any time reference for when symptoms started (yesterday, X hours ago, "昨日から", "since")
+- SEVERITY: any explicit intensity description (very painful, mild, severe, agonizing, "とても痛い", numeric scale)
+- QUALITY: pain quality descriptor (sharp, dull, throbbing, burning, cramping, "ズキズキ")
+- TRIGGERS: anything that makes symptom worse
+- RELIEF: anything that makes symptom better
+- RED_FLAGS: blood, loss of consciousness, sudden weakness, cyanosis, severe difficulty
+- MEDICAL_HISTORY: existing conditions, current medications
+
+PATIENT COMPLAINT:
+"%COMPLAINT%"
+
+Output ONLY a JSON array of topic codes. No other text. Example:
+["ASSOCIATED_FEVER", "ASSOCIATED_COUGH", "ONSET", "SEVERITY"]
+''';
+
+  try {
+    final filled = prompt.replaceAll('%COMPLAINT%', original);
+    final raw = await GemmaService._callOfflineFast(filled);
+    // JSON 配列から topic コードを正規表現で抽出 (tolerant)
+    final found = <String>{};
+    final pattern = RegExp(
+        r'\b(ASSOCIATED_FEVER|ASSOCIATED_COUGH|ASSOCIATED_NAUSEA|ASSOCIATED_HEADACHE|ASSOCIATED_BREATHING|ASSOCIATED_SWALLOWING|ONSET|SEVERITY|QUALITY|TRIGGERS|RELIEF|RED_FLAGS|MEDICAL_HISTORY)\b');
+    for (final m in pattern.allMatches(raw)) {
+      found.add(m.group(0)!);
+    }
+    debugPrint('[_extractTopicsSemantically] raw=${raw.substring(0, raw.length.clamp(0, 200))}');
+    debugPrint('[_extractTopicsSemantically] extracted=$found');
+
+    // 念のためキーワード抽出と OR して取りこぼし防止
+    final combined = found.union(_extractTopicsFromText(original));
+    _semanticTopicCache[key] = combined;
+    return combined;
+  } catch (e) {
+    debugPrint('[_extractTopicsSemantically] failed: $e — falling back to keyword');
+    final fallback = _extractTopicsFromText(original);
+    _semanticTopicCache[key] = fallback;
+    return fallback;
+  }
+}
+
 Set<String> _extractTopicsFromText(String text) {
   final lower = text.toLowerCase();
   final hit = <String>{};
@@ -188,20 +382,18 @@ String _buildConversationalPrompt(
   String original,
   List<Map<String, String>> qaHistory,
   int maxQuestions,
-  String icdContext, // Layer 1 grounding (常時注入・空なら省略)
-) {
+  String icdContext, {
+  Set<String>? extractedTopics, // Layer 1.5 で Gemma が意味抽出した topic
+}) {
   final questionsAsked = qaHistory.length;
   final remaining = maxQuestions - questionsAsked;
 
-  // ★ 2026-05-16: 同一質問ループ対策を根本修正。
-  //   旧設計: AI 質問文に keyword が含まれる前提で answered 判定 → 含まれないと
-  //           同じ topic を priority list から再選択し続け、5問同じ質問の致命バグ。
-  //   新設計: intake form でカバー済みの topic だけを除外した priority list を作り、
-  //           qaHistory.length を index として「確定的に」前進させる。
-  //           AI 側で keyword を含めなくても、毎ターン必ず別 topic が選ばれる。
-  //
-  //   1) intake form の text からカバー済み topic を抽出 (Q&A は使わない)
-  final fromIntakeTopics = _extractTopicsFromText(original);
+  // ★ 2026-05-17 v2: キーワードマッチを semantic 抽出に置き換え。
+  //   Gemma が意味抽出した topic 集合を使用 (フォールバック: キーワード抽出)。
+  //   これで「子供が熱を出した」「すごく熱い」「fever since yesterday」「fiebre」
+  //   等の全表現・全言語・長文に対応。
+  final fromIntakeTopics =
+      extractedTopics ?? _extractTopicsFromText(original);
 
   // 2) Topic 名 ⇒ 簡潔な英語説明 + 質問のテンプレヒント
   //    (priority 順に並べる: safety-critical → general)
@@ -220,7 +412,7 @@ String _buildConversationalPrompt(
     'ONSET',
     'SEVERITY',
   ];
-  const topicDescriptions = {
+  final topicDescriptions = {
     'QUALITY':
         'pain quality (sharp / dull / burning / cramping) — give 3-4 choices',
     'TRIGGERS': 'what makes the symptom worse',
@@ -238,13 +430,70 @@ String _buildConversationalPrompt(
     'MEDICAL_HISTORY': 'relevant medical history or current medications',
     'ONSET': 'when the symptom started',
     'SEVERITY': 'pain severity 0-10 — use a 0 to 10 scale anchor',
+    // ★ 2026-05-17: ユーザーが既に言及した症状の DRILL-DOWN topic。
+    //   「言及あり = SKIP」ではなく、「言及あり = ACKNOWLEDGE + 詳細を聞く」
+    //   方針への変更 (UX 改善)。priority list の先頭に挿入される。
+    //
+    //   ⚠️ description は AI への INSTRUCTION (英語固定で OK)。
+    //   実際の出力言語は system prompt の RESPONSE LANGUAGE directive と
+    //   R3 (QUICK_REPLIES in patient's language) によって患者言語に翻訳される。
+    //   例文・選択肢の文字列もすべて英語で記述 (patient 言語混入を避ける)。
+    'DRILL_FEVER':
+        'User already mentioned FEVER. First briefly acknowledge it in the patient language (e.g., "I see, fever — got it"), THEN ask how high the temperature is using these EXACT range choices: ${_feverRangesForLocale()}. Use the patient language for the question phrasing and "not measured" option.',
+    'DRILL_COUGH':
+        'User already mentioned COUGH. First acknowledge in patient language, THEN ask the cough quality. Give 3-4 choices: dry / wet (with phlegm) / barking / occasional vs constant. Translate naturally.',
+    'DRILL_NAUSEA':
+        'User already mentioned NAUSEA or VOMITING. First acknowledge in patient language, THEN ask how many times today. Choices: once / 2-3 times / many times / constant.',
+    'DRILL_HEADACHE':
+        'User already mentioned HEADACHE. First acknowledge in patient language, THEN ask the pain quality. Choices: sharp / throbbing / dull / pressure-like.',
+    'DRILL_BREATHING':
+        'User already mentioned BREATHING difficulty. First acknowledge in patient language, THEN ask whether it occurs at rest or only with activity. Choices: at rest (RED FLAG) / only when active / both. Note: at-rest dyspnea is urgent.',
+    'DRILL_SWALLOWING':
+        'User already mentioned SWALLOWING difficulty. First acknowledge in patient language, THEN ask if liquids also hurt. Choices: only solid food / both solid and liquid / cannot drink at all.',
   };
 
-  // 3) intake でカバー済みを除いた priority list を作り、
-  //    qaHistory.length を index に「確定的に」前進させる。
-  final remainingTopics = topicPriority
-      .where((t) => !fromIntakeTopics.contains(t))
-      .toList();
+  // 3) ★ 2026-05-17: 「skip」じゃなく「drill-down」設計に変更。
+  //   ユーザーが既に言及した ASSOCIATED_* topic は DRILL_* に置換して
+  //   priority list の先頭に挿入。AI は acknowledge + 詳細を聞き出す。
+  //
+  //   例: 入力「子供が熱を出した」→ extracted = {ASSOCIATED_FEVER}
+  //       Turn 1: DRILL_FEVER (「熱があるんですね、何度ありますか?」)
+  //       Turn 2: RED_FLAGS
+  //       Turn 3: ASSOCIATED_BREATHING (未言及の他の症状)
+  //       Turn 4: ASSOCIATED_NAUSEA
+  //       ...
+  const associatedToDrill = {
+    'ASSOCIATED_FEVER': 'DRILL_FEVER',
+    'ASSOCIATED_COUGH': 'DRILL_COUGH',
+    'ASSOCIATED_NAUSEA': 'DRILL_NAUSEA',
+    'ASSOCIATED_HEADACHE': 'DRILL_HEADACHE',
+    'ASSOCIATED_BREATHING': 'DRILL_BREATHING',
+    'ASSOCIATED_SWALLOWING': 'DRILL_SWALLOWING',
+  };
+
+  // Drill-down 用 topic (言及済みのものを抽出)
+  final drillTopics = <String>[];
+  for (final entry in associatedToDrill.entries) {
+    if (fromIntakeTopics.contains(entry.key)) {
+      drillTopics.add(entry.value);
+    }
+  }
+
+  // 最終 priority list:
+  //   1. RED_FLAGS (safety-critical・常に最初)
+  //   2. Drill-down on mentioned symptoms (詳細聞き出し)
+  //   3. Unmentioned ASSOCIATED_* (他の症状の有無確認)
+  //   4. SEVERITY / ONSET / QUALITY / TRIGGERS / RELIEF / MEDICAL_HISTORY
+  final remainingTopics = <String>[];
+  if (!fromIntakeTopics.contains('RED_FLAGS')) {
+    remainingTopics.add('RED_FLAGS');
+  }
+  remainingTopics.addAll(drillTopics);
+  for (final t in topicPriority) {
+    if (t == 'RED_FLAGS') continue; // 既に追加済
+    if (fromIntakeTopics.contains(t)) continue; // 言及済 → drill 側で扱う
+    remainingTopics.add(t);
+  }
   final topicIndex = qaHistory.length; // 毎ターン必ず進む
 
   // 4) 問診票の生 facts も補助情報として残す
@@ -328,6 +577,40 @@ $instructionLine
 }
 
 /// UI ロケールから AI 向けの「この言語で応答せよ」ディレクティブを生成。
+/// ロケール・国コードに応じた発熱温度の chip 範囲を返す。
+/// US 系のみ Fahrenheit、それ以外 (大多数の国) は Celsius。
+/// device の country code が取れない場合は言語コードからの推定 → 最終的に Celsius へ。
+String _feverRangesForLocale() {
+  // PlatformDispatcher から country code を取得 (例: 'US', 'JP', 'GB')
+  String? country;
+  try {
+    country = ui.PlatformDispatcher.instance.locale.countryCode?.toUpperCase();
+  } catch (_) {}
+
+  // Fahrenheit primary な国 (米国とその影響圏)
+  const fahrenheitCountries = {
+    'US', // United States
+    'BS', // Bahamas
+    'BZ', // Belize
+    'KY', // Cayman Islands
+    'LR', // Liberia
+    'MH', // Marshall Islands
+    'FM', // Micronesia
+    'PW', // Palau
+  };
+
+  // 言語が en (国指定なし) + country 不明 → en-US と仮定して Fahrenheit
+  // それ以外はすべて Celsius (大多数の国)
+  final lang = TranslationService.instance.currentLocale.toLowerCase();
+  final useFahrenheit = (country != null && fahrenheitCountries.contains(country)) ||
+      (country == null && lang == 'en');
+
+  if (useFahrenheit) {
+    return 'under 100°F | 100-102°F | 102°F or higher | not measured';
+  }
+  return 'under 38°C | 38-39°C | 39°C or higher | not measured';
+}
+
 /// プロンプト冒頭に置く。英語の場合は空文字 (default 動作).
 String _responseLanguageDirective() {
   final locale = TranslationService.instance.currentLocale;
@@ -335,9 +618,12 @@ String _responseLanguageDirective() {
   final langName = _localeToLanguageName(locale);
   return '━ RESPONSE LANGUAGE ━\n'
       'Respond in $langName ($locale) using its native script.\n'
-      'This applies to QUESTION, QUICK_REPLIES, SUMMARY, ACTION, '
-      'POSSIBLE_CONDITIONS, and DETAILS.\n'
-      'Format keys (TYPE:/LEVEL:/etc.) stay English.\n\n';
+      'This applies to ALL human-readable content: QUESTION, QUICK_REPLIES, '
+      'SUMMARY, ACTION, POSSIBLE_CONDITIONS, DETAILS, and DISCLAIMER.\n'
+      'Format keys (TYPE:/LEVEL:/etc.) stay English; everything after the colon '
+      'on those lines is in $langName.\n'
+      'NEVER mix scripts — if you cannot express something cleanly in $langName, '
+      'use a culturally common loanword in $langName native script.\n\n';
 }
 
 /// locale code → 人間可読の言語名 (system instruction で AI が認識する形)
@@ -773,12 +1059,20 @@ class GemmaService {
       debugPrint(
           '[Timing] Layer 1 (ICD lookup) = ${l1Sw.elapsedMilliseconds} ms');
 
+      // ── Layer 1.5: 意味的 topic 抽出 (初回ターンのみ・以降キャッシュ) ──
+      //   ★ 2026-05-17: キーワードマッチでは活用形・口語・長文・他言語に
+      //   対応できなかったため、Gemma 自身に意味抽出させる設計に変更。
+      //   1 セッション = 1 抽出で済むのでオーバーヘッド許容。
+      final extractedTopics = await _extractTopicsSemantically(original);
+      debugPrint('[Layer 1.5] Semantically extracted topics: $extractedTopics');
+
       // ── Stage 1 (Layer 2): Standard mode (always runs, ~10-15 s) ──
       onStageProgress?.call('analyzing');
       debugPrint('[GemmaService.analyzeNext] Layer 2: Standard mode (with ICD grounding)');
       final l2Sw = Stopwatch()..start();
       final raw = await _callOffline(
-        _buildConversationalPrompt(original, qaHistory, _maxQuestions, icdContext),
+        _buildConversationalPrompt(original, qaHistory, _maxQuestions, icdContext,
+            extractedTopics: extractedTopics),
         isThinking: false,
         systemInstruction: _conversationalSystemInstruction,
       );
@@ -1132,8 +1426,17 @@ DISCLAIMER: This is not a substitute for professional medical diagnosis.
         if (RegExp(r'[؀-ۿ]').hasMatch(p)) return false; // アラビア
         return true;
       }).toList();
-      if (filtered.length >= 2) return filtered.take(6).toList();
-      return null; // 大半が異言語だったら null フォールバック
+      if (filtered.length < 2) return null;
+      // ★ 2026-05-17: ja 質問なのに全 chip が 純 ASCII (Yes/No/Not sure 等)
+      //   なら英語フォールバック扱い → reject。local detect でローカライズ。
+      final hasCjk = filtered.any((p) =>
+          RegExp(r'[぀-ヿ一-鿿]').hasMatch(p));
+      if (!hasCjk) {
+        debugPrint(
+            '[QuickReplies] all-ASCII chips for ja question → rejecting: $filtered');
+        return null;
+      }
+      return filtered.take(6).toList();
     }
     return parts.take(6).toList(); // 最大 6 個
   }
@@ -1174,11 +1477,19 @@ DISCLAIMER: This is not a substitute for professional medical diagnosis.
       debugPrint(
           '[Timing] Layer 1 (ICD lookup) = ${l1Sw.elapsedMilliseconds} ms');
 
+      // Layer 1.5: 意味的 topic 抽出 (conversation flow と共通化・1 セッション 1 回)
+      //   ★ 2026-05-17: questionnaire flow も conversation と同じ semantic 抽出 +
+      //   drill-down 動作にする。問診票の自由記述や photo + 構造化情報を
+      //   Gemma が一括理解して、聞き直し or 詳細聞き出しを賢く分ける。
+      final extractedTopics = await _extractTopicsSemantically(original);
+      debugPrint('[Layer 1.5] Semantically extracted topics: $extractedTopics');
+
       // ── Stage 1 (Layer 2): Standard mode + 画像 + ICD grounding ──
       onStageProgress?.call('analyzing');
       final l2Sw = Stopwatch()..start();
       final prompt = _buildConversationalPrompt(
-          original, qaHistory, _maxQuestions, icdContext);
+          original, qaHistory, _maxQuestions, icdContext,
+          extractedTopics: extractedTopics);
       const imagePromptSuffix = '''
 
 ━━ IMAGE ATTACHED ━━
@@ -1693,13 +2004,51 @@ Apply the same response format. Include visual findings in SUMMARY.
         .where((l) => !RegExp(r'^\s*[-•・*]\s*$').hasMatch(l))
         .join('\n');
 
+    // ★ 2026-05-17: 他言語スクリプト混入の除去 (Thai/Hangul/Devanagari/Arabic 等)。
+    //   実機ログで「最ใกล้の病院」のように Thai 1 文字が JA 出力に紛れ込む事象を確認。
+    //   Gemma E2B の sampling フラックで稀に発生する。
+    //   JA 出力で許容する script: 仮名・漢字・ASCII数字記号・全角記号のみ。
+    //   それ以外のスクリプト文字 (タイ・ハングル・デーヴァナーガリー・アラビア・
+    //   ヘブライ・キリル・チベット等) を除去。
+    text = text.replaceAll(
+      RegExp(r'[฀-๿'      // Thai
+             r'가-힯'        // Hangul (Korean)
+             r'ऀ-ॿ'        // Devanagari (Hindi)
+             r'ঀ-৿'        // Bengali
+             r'਀-੿'        // Gurmukhi (Punjabi)
+             r'؀-ۿ'        // Arabic
+             r'֐-׿'        // Hebrew
+             r'Ѐ-ӿ'        // Cyrillic (Russian)
+             r'ༀ-࿿'        // Tibetan
+             r'က-႟'        // Myanmar
+             r'ក-៿'        // Khmer
+             r'ঀ-৿]+'),    // (Bengali repeated for safety)
+      '',
+    );
+
     return text.trim();
   }
 
   static TriageResult _parseResponse(String text,
       [String langCode = 'en-US']) {
+    // ★ 2026-05-17: AI が DISCLAIMER の後に独自に問診票要約や別 DISCLAIMER を
+    //   付け足して出力する事象を確認 (Stage 1 ログより)。
+    //   例:
+    //     DISCLAIMER: ...
+    //     ---
+    //     **【記入済み問診票】**
+    //     - 発熱あり ...
+    //     ---
+    //     DISCLAIMER: ...  ← 2 回目
+    //   最初の DISCLAIMER の行末まで切って後続を破棄。
+    var truncated = text;
+    final firstDisclaimer = RegExp(r'DISCLAIMER:.*$', multiLine: true)
+        .firstMatch(text);
+    if (firstDisclaimer != null) {
+      truncated = text.substring(0, firstDisclaimer.end);
+    }
     // TYPE: TRIAGE ヘッダーを除去してパース
-    final clean = text.replaceAll(RegExp(r'TYPE:\s*TRIAGE\s*\n?'), '');
+    final clean = truncated.replaceAll(RegExp(r'TYPE:\s*TRIAGE\s*\n?'), '');
 
     int level = 2;
     String summary = '';
