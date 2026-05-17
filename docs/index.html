@@ -266,6 +266,56 @@
       font-size: 20px;
     }
 
+    /* ─── References ──────────────────────────────────── */
+    .references {
+      background: #FAFAFA;
+    }
+    .references h2 {
+      color: var(--teal-dark);
+    }
+    .ref-list {
+      max-width: 880px;
+      margin: 32px auto 0;
+      padding: 0;
+      list-style: none;
+    }
+    .ref-list li {
+      padding: 14px 0;
+      border-bottom: 1px solid #E5E5E5;
+      font-size: 15px;
+      line-height: 1.55;
+      color: var(--charcoal);
+    }
+    .ref-list li:last-child {
+      border-bottom: none;
+    }
+    .ref-list .ref-cite {
+      display: block;
+      color: var(--charcoal);
+    }
+    .ref-list .ref-url {
+      display: block;
+      font-size: 13px;
+      color: var(--teal-dark);
+      word-break: break-all;
+      margin-top: 4px;
+    }
+    .ref-list .ref-url a {
+      color: var(--teal-dark);
+      text-decoration: none;
+    }
+    .ref-list .ref-url a:hover {
+      text-decoration: underline;
+    }
+    .ref-license {
+      font-size: 13px;
+      color: var(--gray);
+      max-width: 880px;
+      margin: 24px auto 0;
+      text-align: center;
+      font-style: italic;
+    }
+
     /* ─── Footer ──────────────────────────────────────── */
     footer {
       background: var(--charcoal);
@@ -306,7 +356,7 @@
     </p>
     <div class="hero-cta">
       <a class="btn btn-primary" href="#video">▶ Watch the demo</a>
-      <a class="btn btn-secondary" href="[APK_RELEASE_URL]">⬇ Download APK</a>
+      <a class="btn btn-secondary" href="https://github.com/chyonek/medigemma_field/releases">⬇ Download APK</a>
     </div>
   </header>
 
@@ -415,6 +465,73 @@
         <p>Same ICD context + full Q&amp;A history. Internal step-by-step reasoning for the difficult cases.</p>
       </div>
     </div>
+  </section>
+
+  <!-- ━━━━━ References ━━━━━ -->
+  <section class="references" id="references">
+    <h2>References &amp; sources</h2>
+    <p class="lead">Every claim in our writeup and video is grounded in public, citable sources. The list below is the authoritative version.</p>
+    <ul class="ref-list">
+
+      <li>
+        <span class="ref-cite"><strong>WHO &amp; World Bank.</strong> <em>Tracking universal health coverage: 2023 global monitoring report.</em></span>
+        <span class="ref-url"><a href="https://www.who.int/publications/i/item/9789240080379">https://www.who.int/publications/i/item/9789240080379</a></span>
+      </li>
+
+      <li>
+        <span class="ref-cite"><strong>GSMA Intelligence.</strong> <em>The State of Mobile Internet Connectivity 2025.</em></span>
+        <span class="ref-url"><a href="https://www.gsmaintelligence.com/research/the-state-of-mobile-internet-connectivity-2025-overview-report">https://www.gsmaintelligence.com/research/the-state-of-mobile-internet-connectivity-2025-overview-report</a></span>
+      </li>
+
+      <li>
+        <span class="ref-cite"><strong>TechAfrica News (2024).</strong> <em>Africa's Mobile Connectivity: Has the Internet Access Gap Narrowed in 2024?</em></span>
+        <span class="ref-url"><a href="https://techafricanews.com/2024/10/31/africas-mobile-connectivity-has-the-internet-access-gap-narrowed-in-2024/">https://techafricanews.com/2024/10/31/africas-mobile-connectivity-has-the-internet-access-gap-narrowed-in-2024/</a></span>
+      </li>
+
+      <li>
+        <span class="ref-cite"><strong>WHO.</strong> <em>International Classification of Diseases, 11th Revision (ICD-11).</em> Licensed CC BY-ND 3.0 IGO.</span>
+        <span class="ref-url"><a href="https://icd.who.int/browse11">https://icd.who.int/browse11</a></span>
+      </li>
+
+      <li>
+        <span class="ref-cite"><strong>WHO.</strong> <em>ICD-11 Reference Guide</em> (2022) — §1.1.1 Intended uses (decision support).</span>
+      </li>
+
+      <li>
+        <span class="ref-cite"><strong>WHO.</strong> <em>Emergency Triage Assessment and Treatment (ETAT)</em> (2005); <em>Integrated Management of Childhood Illness (IMCI).</em></span>
+      </li>
+
+      <li>
+        <span class="ref-cite"><strong>Google DeepMind.</strong> <em>Gemma 4 model card.</em></span>
+        <span class="ref-url"><a href="https://ai.google.dev/gemma">https://ai.google.dev/gemma</a></span>
+      </li>
+
+      <li>
+        <span class="ref-cite"><strong>Google AI Edge.</strong> <em>LiteRT-LM.</em></span>
+        <span class="ref-url"><a href="https://ai.google.dev/edge/litert">https://ai.google.dev/edge/litert</a></span>
+      </li>
+
+      <li>
+        <span class="ref-cite"><strong>HL7.</strong> <em>FHIR Questionnaire Resource.</em></span>
+        <span class="ref-url"><a href="https://www.hl7.org/fhir/questionnaire.html">https://www.hl7.org/fhir/questionnaire.html</a></span>
+      </li>
+
+      <li>
+        <span class="ref-cite"><strong>W3C.</strong> <em>Web Content Accessibility Guidelines (WCAG) 2.1.</em></span>
+        <span class="ref-url"><a href="https://www.w3.org/TR/WCAG21/">https://www.w3.org/TR/WCAG21/</a></span>
+      </li>
+
+      <li>
+        <span class="ref-cite"><strong>OWASP.</strong> <em>LLM and Gen AI Data Security Best Practices (2025).</em></span>
+        <span class="ref-url"><a href="https://genai.owasp.org/">https://genai.owasp.org/</a></span>
+      </li>
+
+      <li>
+        <span class="ref-cite"><strong>IASP/WHO.</strong> Numeric Rating Scale (NRS 0–10) for pain assessment.</span>
+      </li>
+
+    </ul>
+    <p class="ref-license">ICD-11 content used under <strong>CC BY-ND 3.0 IGO</strong> (codes, titles, and URIs preserved verbatim, no adaptations). WHO is the source of all ICD-11 data. Citation: <em>International Classification of Diseases, Eleventh Revision (ICD-11), World Health Organization (WHO) 2019/2021</em>.</p>
   </section>
 
   <!-- ━━━━━ Footer ━━━━━ -->
