@@ -1,10 +1,3 @@
-<!--
-  Replace [PLACEHOLDER] tokens before submission:
-    [YOUTUBE_VIDEO_ID]   — actual YouTube video ID after upload
-    [APK_RELEASE_URL]    — actual GitHub Release APK download URL
-    [LANDING_PAGE_URL]   — actual landing page URL (GitHub Pages or static host)
--->
-
 <p align="center">
   <img src="assets/icon/app_icon.png" width="128" alt="MediGemma Field icon" />
 </p>
@@ -27,11 +20,13 @@
 
 ## 🎬 Demo
 
-▶ **Watch the 3-minute demo on YouTube**: https://youtu.be/[YOUTUBE_VIDEO_ID]
+▶ **Watch the 3-minute demo on YouTube**: https://youtu.be/Kh6hvdyTVak
 
-📦 **Download the Android APK**: [Release v1.0.0]([APK_RELEASE_URL])
+📦 **Download the Android APK** (the actual runnable demo): [Release v1.0.0](https://github.com/chyonek/medigemma_field/releases/tag/v1.0.0)
 
-🌐 **Live Demo / Landing Page**: [LANDING_PAGE_URL]
+🌐 **Landing page** (video + screenshots + references): https://chyonek.github.io/medigemma_field/
+
+📝 **Kaggle Writeup**: https://www.kaggle.com/competitions/gemma-4-good-hackathon/writeups/medigemma-field-frontier-healthcare-for-those-be
 
 ---
 
