@@ -6,6 +6,7 @@ import '../services/gemma_service.dart';
 import '../services/model_service.dart';
 import '../services/translation_service.dart';
 import 'model_download_screen.dart';
+import 'post_download_setup_screen.dart';
 
 /// 設定画面：AI モデルの透明な管理（Chrome AI 問題への対策・GDPR 対応）
 ///
@@ -336,20 +337,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // 規約画面と同じ override を保存
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('terms_locale_override', selected);
-    // 翻訳サービスに反映
+    // 翻訳サービスに反映 (background で ensureTranslated が走る)
     await TranslationService.instance.setLocale(selected);
     if (!mounted) return;
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: const Color(0xFF1565C0),
-        duration: const Duration(seconds: 3),
-        content: Text(
-          'Language changed to ${TermsL10n.nativeNames[selected]}',
-          style: const TextStyle(color: Colors.white),
+
+    // 英語に切替なら翻訳不要 — そのまま戻る
+    if (selected == 'en') {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF1565C0),
+          duration: const Duration(seconds: 2),
+          content: const Text(
+            'Language changed to English',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+      return;
+    }
+
+    // ★ 2026-05-17: 言語切替時は再翻訳の進捗を見せる Setup 画面に遷移。
+    //   背景: 翻訳は 1〜3 分かかる Gemma 推論なので、settings 画面で待たせると
+    //   "止まってる?" と誤解される。PostDownloadSetupScreen の進捗バー UI を流用。
+    final navigator = Navigator.of(context);
+    await navigator.push(
+      MaterialPageRoute(
+        builder: (_) => PostDownloadSetupScreen(
+          isLanguageSwitch: true,
+          onComplete: () => Navigator.of(context).pop(),
         ),
       ),
     );
+    if (!mounted) return;
+    setState(() {});
   }
 
   // ─── モデル状態カード ─────────────────────────────────

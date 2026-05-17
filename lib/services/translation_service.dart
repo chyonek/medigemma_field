@@ -61,10 +61,15 @@ class TranslationService extends ChangeNotifier {
 
   // v5: result_details_header を 'Suggested care steps' に変更
   //     → 「受診時の注意点」誤訳回避のため
-  // v6 (2026-05-17): locale 切替の race condition で汚染されたキャッシュを
+  // v6 (2026-05-17 early): locale 切替の race condition で汚染されたキャッシュを
   //     強制無効化。既存ユーザーは再翻訳が必要だが、データ整合性優先。
   //     race fix は同 commit の _localeVersion で実装済 (両方必要)。
-  static const _cacheKeyPrefix = 'ui_translations_v6_';
+  // v7 (2026-05-17 late): translateUiStrings に locale code (e.g. 'sw') ではなく
+  //     full name (e.g. 'Swahili') を渡すよう修正。
+  //     symptom: Gemma に 'sw' を渡すと言語認識せず、前回セッションの言語 (JA)
+  //     に引っ張られて SW cache 内に JA strings が保存されていた。
+  //     v6 cache を invalidate して fresh 再翻訳を強制。
+  static const _cacheKeyPrefix = 'ui_translations_v7_';
   static const _localeOverrideKey = 'ui_locale_override';
 
   // ─── マスター UI 文字列（英語・このアプリで唯一の "ハードコード"） ──
@@ -470,8 +475,12 @@ class TranslationService extends ChangeNotifier {
     _currentLocale = code;
     // ★ 翻訳セッションを無効化 (進行中の ensureTranslated は abort される)
     _localeVersion++;
+    // ★ 2026-05-17: 言語切替は「新しい翻訳セッション」なので諦めフラグをリセット。
+    //   従来のバグ: 一度 SW で諦めた後 JA に切替えても _gaveUpThisSession=true で
+    //   再翻訳が永久にスキップされていた。
+    _gaveUpThisSession = false;
     debugPrint(
-        '[TranslationService] setLocale → $code (version=$_localeVersion)');
+        '[TranslationService] setLocale → $code (version=$_localeVersion, gaveUp reset)');
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_localeOverrideKey, code);

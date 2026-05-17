@@ -341,46 +341,113 @@ String _responseLanguageDirective() {
 }
 
 /// locale code → 人間可読の言語名 (system instruction で AI が認識する形)
+///
+/// ⚠️ 2026-05-17: Gemma に ISO code ('sw') を渡しても言語を認識せず
+/// 前回セッションの言語に引っ張られるバグを確認 → full name + native name 必須。
+/// アプリは 140 言語対応を謳うが、Gemma 4 E2B の生成品質は言語によって差が大きい:
+///   ✅ Tier 1 (高品質): en/ja/ar/es/fr/pt/zh/ru/de/it/ko/hi
+///   🟡 Tier 2 (実用):    tr/vi/th/id/fa/ur/bn/sw/pl/nl/uk
+///   🟠 Tier 3 (低品質):  ha/yo/am/so/rw 等 (アフリカ少資源言語)
+/// 全 tier で full name を渡すことで生成精度を最大化。
 String _localeToLanguageName(String locale) {
-  switch (locale) {
-    case 'ja':
-      return 'Japanese';
-    case 'sw':
-      return 'Swahili';
-    case 'ar':
-      return 'Arabic';
-    case 'es':
-      return 'Spanish';
-    case 'fr':
-      return 'French';
-    case 'pt':
-      return 'Portuguese';
-    case 'hi':
-      return 'Hindi';
-    case 'zh':
-      return 'Chinese';
-    case 'ru':
-      return 'Russian';
-    case 'de':
-      return 'German';
-    case 'ko':
-      return 'Korean';
-    case 'th':
-      return 'Thai';
-    case 'vi':
-      return 'Vietnamese';
-    case 'tr':
-      return 'Turkish';
-    case 'id':
-      return 'Indonesian';
-    case 'fa':
-      return 'Persian';
-    case 'ur':
-      return 'Urdu';
-    case 'bn':
-      return 'Bengali';
+  switch (locale.toLowerCase()) {
+    // ── Tier 1: 主要言語 (Gemma 4 が高精度) ──
+    case 'en': return 'English';
+    case 'ja': return 'Japanese (日本語)';
+    case 'ar': return 'Arabic (العربية)';
+    case 'es': return 'Spanish (Español)';
+    case 'fr': return 'French (Français)';
+    case 'pt': return 'Portuguese (Português)';
+    case 'zh': return 'Chinese (中文)';
+    case 'ru': return 'Russian (Русский)';
+    case 'de': return 'German (Deutsch)';
+    case 'it': return 'Italian (Italiano)';
+    case 'ko': return 'Korean (한국어)';
+    case 'hi': return 'Hindi (हिन्दी)';
+    // ── Tier 2: 実用的に動く言語 ──
+    case 'tr': return 'Turkish (Türkçe)';
+    case 'vi': return 'Vietnamese (Tiếng Việt)';
+    case 'th': return 'Thai (ภาษาไทย)';
+    case 'id': return 'Indonesian (Bahasa Indonesia)';
+    case 'fa': return 'Persian/Farsi (فارسی)';
+    case 'ur': return 'Urdu (اردو)';
+    case 'bn': return 'Bengali (বাংলা)';
+    case 'sw': return 'Swahili (Kiswahili)';
+    case 'pl': return 'Polish (Polski)';
+    case 'nl': return 'Dutch (Nederlands)';
+    case 'uk': return 'Ukrainian (Українська)';
+    case 'tl': return 'Tagalog/Filipino';
+    case 'ms': return 'Malay (Bahasa Melayu)';
+    case 'el': return 'Greek (Ελληνικά)';
+    case 'he': return 'Hebrew (עברית)';
+    case 'sv': return 'Swedish (Svenska)';
+    case 'no': return 'Norwegian (Norsk)';
+    case 'da': return 'Danish (Dansk)';
+    case 'fi': return 'Finnish (Suomi)';
+    case 'cs': return 'Czech (Čeština)';
+    case 'ro': return 'Romanian (Română)';
+    case 'hu': return 'Hungarian (Magyar)';
+    case 'bg': return 'Bulgarian (Български)';
+    case 'sr': return 'Serbian (Српски)';
+    case 'hr': return 'Croatian (Hrvatski)';
+    case 'ta': return 'Tamil (தமிழ்)';
+    case 'te': return 'Telugu (తెలుగు)';
+    case 'mr': return 'Marathi (मराठी)';
+    case 'gu': return 'Gujarati (ગુજરાતી)';
+    case 'pa': return 'Punjabi (ਪੰਜਾਬੀ)';
+    case 'kn': return 'Kannada (ಕನ್ನಡ)';
+    case 'ml': return 'Malayalam (മലയാളം)';
+    case 'si': return 'Sinhala (සිංහල)';
+    case 'ne': return 'Nepali (नेपाली)';
+    case 'my': return 'Burmese/Myanmar (ဗမာ)';
+    case 'km': return 'Khmer (ខ្មែរ)';
+    case 'lo': return 'Lao (ລາວ)';
+    case 'mn': return 'Mongolian (Монгол)';
+    case 'ka': return 'Georgian (ქართული)';
+    case 'hy': return 'Armenian (Հայերեն)';
+    case 'az': return 'Azerbaijani (Azərbaycanca)';
+    case 'kk': return 'Kazakh (Қазақша)';
+    case 'uz': return 'Uzbek (O\'zbek)';
+    case 'ky': return 'Kyrgyz (Кыргызча)';
+    case 'tg': return 'Tajik (Тоҷикӣ)';
+    // ── Tier 3: アフリカ少資源言語 (生成精度低めだが対応) ──
+    case 'ha': return 'Hausa';
+    case 'yo': return 'Yoruba';
+    case 'ig': return 'Igbo';
+    case 'am': return 'Amharic (አማርኛ)';
+    case 'so': return 'Somali (Soomaali)';
+    case 'rw': return 'Kinyarwanda';
+    case 'om': return 'Oromo';
+    case 'zu': return 'Zulu (isiZulu)';
+    case 'xh': return 'Xhosa (isiXhosa)';
+    case 'af': return 'Afrikaans';
+    case 'mg': return 'Malagasy';
+    case 'ny': return 'Chichewa/Nyanja';
+    case 'sn': return 'Shona (chiShona)';
+    case 'st': return 'Sesotho';
+    // ── その他 ──
+    case 'eu': return 'Basque (Euskara)';
+    case 'ca': return 'Catalan (Català)';
+    case 'gl': return 'Galician (Galego)';
+    case 'is': return 'Icelandic (Íslenska)';
+    case 'ga': return 'Irish (Gaeilge)';
+    case 'cy': return 'Welsh (Cymraeg)';
+    case 'mt': return 'Maltese (Malti)';
+    case 'sq': return 'Albanian (Shqip)';
+    case 'mk': return 'Macedonian (Македонски)';
+    case 'sl': return 'Slovenian (Slovenščina)';
+    case 'sk': return 'Slovak (Slovenčina)';
+    case 'lt': return 'Lithuanian (Lietuvių)';
+    case 'lv': return 'Latvian (Latviešu)';
+    case 'et': return 'Estonian (Eesti)';
+    case 'be': return 'Belarusian (Беларуская)';
+    case 'ps': return 'Pashto (پښتو)';
+    case 'sd': return 'Sindhi (سنڌي)';
+    case 'ku': return 'Kurdish (Kurdî)';
     default:
-      return locale; // ISO code をそのまま渡す (AI が解釈)
+      // 未知コード: 「ISO 639 言語コード 'XX'」と AI に明示
+      // 'unknown' を返すより AI が解釈する余地を残す
+      return "the language with ISO 639 code '$locale' (translate using native script)";
   }
 }
 
@@ -1421,12 +1488,18 @@ Apply the same response format. Include visual findings in SUMMARY.
     // 入力を JSON 形式にしておくと出力もそれを真似する → パース成功率↑
     final inputJson = jsonEncode(englishStrings);
 
+    // ★ 2026-05-17 bug fix: 言語コード (e.g. 'sw') を full name (e.g. 'Swahili') に変換。
+    //   Gemma に 'sw' を渡すと言語を認識できず、訳が前回セッションの言語 (例 JA)
+    //   になる症状を確認。'ja' はメジャーで通じるが minor language は通じない。
+    final languageName = _localeToLanguageName(targetLocale);
+
     // ★ 医療コンテキストを明示するとトーンが医療向けに揃う。
     //   "patient/healthcare/symptom" 等の医療語彙を翻訳に活用させる。
     final prompt =
         'You translate UI strings for a medical triage mobile app aimed at non-medical users '
         '(patients, family members, community health workers in remote areas). '
-        'Translate JSON values to natural $targetLocale using clear, friendly, healthcare-appropriate language. '
+        'Translate JSON values to natural $languageName (ISO code: $targetLocale) using clear, friendly, healthcare-appropriate language. '
+        'EVERY value MUST be written in $languageName. Do not leave any value in English, Japanese, or any other language. '
         'Use proper medical terminology where applicable (e.g. "症状" not just "状態", "受診" not just "見せる"), '
         'but keep wording approachable for laypeople. '
         'Use native script only (no romaji/pinyin). '
@@ -1443,8 +1516,33 @@ Apply the same response format. Include visual findings in SUMMARY.
             '[translateUiStrings] could not salvage any pairs from response: ${raw.substring(0, raw.length.clamp(0, 200))}');
         return null;
       }
+
+      // ★ 2026-05-17: 「翻訳結果が英語のまま」を検出して reject。
+      //   バグ: Gemma が target locale を認識できない場合 (e.g. minor language)、
+      //   英語を salvage して返すことがある。それを SW/AR cache に保存すると
+      //   ユーザー視点で「翻訳壊れてる」状態に。
+      //   英語は en でなく純粋なマスタコピーなので、target が en でない限り
+      //   入力 == 出力なら untranslated と判定。
+      if (targetLocale != 'en') {
+        var unchangedCount = 0;
+        for (final entry in result.entries) {
+          final orig = englishStrings[entry.key];
+          if (orig != null && orig.trim() == entry.value.trim()) {
+            unchangedCount++;
+          }
+        }
+        final unchangedRatio = unchangedCount / result.length;
+        if (unchangedRatio > 0.5) {
+          debugPrint(
+              '[translateUiStrings] ⚠️ Rejected: $unchangedCount/${result.length} '
+              '(${(unchangedRatio * 100).toStringAsFixed(0)}%) values unchanged from English. '
+              'Gemma likely failed to recognize target locale "$targetLocale" ($languageName).');
+          return null;
+        }
+      }
+
       debugPrint(
-          '[translateUiStrings] salvaged ${result.length}/${englishStrings.length} keys');
+          '[translateUiStrings] salvaged ${result.length}/${englishStrings.length} keys for $languageName');
       return result;
     } catch (e) {
       debugPrint('[translateUiStrings] Error: $e');

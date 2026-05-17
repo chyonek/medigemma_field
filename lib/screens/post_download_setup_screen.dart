@@ -18,7 +18,14 @@ import '../services/notification_service.dart';
 class PostDownloadSetupScreen extends StatefulWidget {
   final VoidCallback onComplete;
 
-  const PostDownloadSetupScreen({super.key, required this.onComplete});
+  /// true なら言語切替後の再翻訳モード (warmup スキップ可・コピー差し替え)
+  final bool isLanguageSwitch;
+
+  const PostDownloadSetupScreen({
+    super.key,
+    required this.onComplete,
+    this.isLanguageSwitch = false,
+  });
 
   @override
   State<PostDownloadSetupScreen> createState() =>
@@ -120,15 +127,21 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
 
     try {
       // ── Phase 1: モデル初回ロード（ダミー推論で warm-up） ──
-      // 「Gemma 4 を起動中…」を表示しながら、軽いプロンプトで初回 init を発火
-      setState(() {
-        _currentStep = 'warmup';
-        _warmupStartedAt = DateTime.now();
-      });
-      debugPrint('[PostDLSetup] Phase 1: warming up Gemma 4...');
-      await GemmaService.warmUp();
-      debugPrint('[PostDLSetup] Phase 1: complete');
-      setState(() => _modelReady = true);
+      // 言語切替モードの場合は既にモデルウォームアップ済なので skip。
+      if (widget.isLanguageSwitch) {
+        debugPrint('[PostDLSetup] Language switch mode — skipping warmup');
+        setState(() => _modelReady = true);
+      } else {
+        // 「Gemma 4 を起動中…」を表示しながら、軽いプロンプトで初回 init を発火
+        setState(() {
+          _currentStep = 'warmup';
+          _warmupStartedAt = DateTime.now();
+        });
+        debugPrint('[PostDLSetup] Phase 1: warming up Gemma 4...');
+        await GemmaService.warmUp();
+        debugPrint('[PostDLSetup] Phase 1: complete');
+        setState(() => _modelReady = true);
+      }
 
       // ── Phase 2: UI 翻訳（必要な場合のみ） ──
       if (needsTranslation) {
@@ -202,20 +215,24 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
                 const Icon(Icons.medical_services,
                     color: Color(0xFF42A5F5), size: 56),
                 const SizedBox(height: 24),
-                const Text(
-                  'Setting up AI for first use',
+                Text(
+                  widget.isLanguageSwitch
+                      ? 'Switching language'
+                      : 'Setting up AI for first use',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                       color: Colors.white,
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                       height: 1.4),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'First-time setup: about 4 minutes on most phones.',
+                Text(
+                  widget.isLanguageSwitch
+                      ? 'Translating the UI on-device. Typically 2 minutes.'
+                      : 'First-time setup: about 4 minutes on most phones.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                       color: Colors.white60, fontSize: 13, height: 1.5),
                 ),
                 const SizedBox(height: 20),
@@ -268,22 +285,24 @@ class _PostDownloadSetupScreenState extends State<PostDownloadSetupScreen> {
                 ),
                 const SizedBox(height: 28),
 
-                // ━━ Phase 1: モデルウォームアップ ━━
-                _phaseRow(
-                  icon: Icons.memory,
-                  label: 'Loading Gemma 4 model',
-                  active: _currentStep == 'warmup' && !_modelReady,
-                  done: _modelReady,
-                  // 進捗バーは出せないので elapsed + 想定範囲を出す
-                  elapsedSeconds: _currentStep == 'warmup' && !_modelReady
-                      ? _warmupElapsedSeconds
-                      : null,
-                  status: _currentStep == 'warmup' && !_modelReady
-                      ? _statusFor(_warmupElapsedSeconds,
-                          _warmupTypicalMin, _warmupTypicalMax)
-                      : null,
-                ),
-                const SizedBox(height: 16),
+                // ━━ Phase 1: モデルウォームアップ ━━ (言語切替時は非表示)
+                if (!widget.isLanguageSwitch) ...[
+                  _phaseRow(
+                    icon: Icons.memory,
+                    label: 'Loading Gemma 4 model',
+                    active: _currentStep == 'warmup' && !_modelReady,
+                    done: _modelReady,
+                    // 進捗バーは出せないので elapsed + 想定範囲を出す
+                    elapsedSeconds: _currentStep == 'warmup' && !_modelReady
+                        ? _warmupElapsedSeconds
+                        : null,
+                    status: _currentStep == 'warmup' && !_modelReady
+                        ? _statusFor(_warmupElapsedSeconds,
+                            _warmupTypicalMin, _warmupTypicalMax)
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+                ],
 
                 // ━━ Phase 2: UI 翻訳 ━━
                 _phaseRow(
